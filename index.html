@@ -1345,7 +1345,7 @@ function pushToForeFlight() {
   overlay.className = 'ff-overlay';
   let checkboxes = '';
   for (const v of validLegs) {
-    const depTz = airportsByIcao[v.leg.dep]?.tz || 'UTC';
+    const depTz = aptIdx[v.leg.dep]?.tz || 'UTC';
     const depLocal = v.lc.departTime.toLocaleString('en-US', { timeZone: depTz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     checkboxes += `<label><input type="checkbox" checked value="${v.idx}"> ${v.leg.dep} → ${v.leg.arr} &nbsp;<span style="color:#64748b;font-size:0.78rem">${depLocal}</span></label>`;
   }
