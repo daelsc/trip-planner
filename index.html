@@ -329,16 +329,21 @@ function fmtDur(min) {
 function fmtTimeCell(date, primaryTz) {
   if (!date || !primaryTz) return '—';
   const lines = [];
-  // Primary: local time at this airport
-  const loc = fmtInTz(date, primaryTz);
-  lines.push(`<span class="mono">${loc.time}</span> <span class="dim">${loc.abbr}</span>`);
-  // Extra timezones
+  // All extra timezones in consistent order, bold the local one
   for (const tz of extraTZ) {
-    if (tz === primaryTz) continue;
     const t = fmtInTz(date, tz);
-    lines.push(`<span class="mono dim">${t.time} ${t.abbr}</span>`);
+    const isLocal = tz === primaryTz;
+    if (isLocal)
+      lines.push(`<span class="mono"><strong>${t.time}</strong></span> <strong>${t.abbr}</strong>`);
+    else
+      lines.push(`<span class="mono dim">${t.time}</span> <span class="dim">${t.abbr}</span>`);
   }
-  // Zulu
+  // If primary tz isn't in extraTZ, show it bolded at top
+  if (!extraTZ.includes(primaryTz)) {
+    const loc = fmtInTz(date, primaryTz);
+    lines.unshift(`<span class="mono"><strong>${loc.time}</strong></span> <strong>${loc.abbr}</strong>`);
+  }
+  // Zulu + date
   const z = fmtInTz(date, 'UTC');
   const dateStr = date.toLocaleString('en-US', { timeZone: primaryTz, month:'short', day:'numeric' });
   lines.push(`<span class="dim">${z.time}Z</span> <span class="date-lbl">${dateStr}</span>`);
@@ -722,65 +727,63 @@ function recalc() {
 
     // Ground/rest row between legs
     if (i < legs.length - 1) {
-      const defaultGround = leg.rest ? 600 : (profile.startup + profile.shutdown);
       const nextLeg = legs[i+1];
       const nextDepApt = aptIdx[nextLeg.dep];
       const nextDepTz = nextDepApt?.tz || arrTz || firstTz;
 
-      // Determine ground time: if nextDep is set, compute from arrival; otherwise use groundMin
-      let gMin, depOverrideTime = null, computed = false;
+      // Default next departure: arrival + startup+shutdown (or 10h for rest)
+      let defaultMin = leg.rest ? 600 : (profile.startup + profile.shutdown);
+      let depOverrideTime = null, gMin;
+
       if (leg.nextDep && arriveTime) {
+        // User set a departure time — compute ground time from it
         depOverrideTime = dateInTz(leg.nextDep, nextDepTz);
         gMin = Math.max(0, Math.round((depOverrideTime - arriveTime) / 60000));
-        computed = true;
+      } else if (arriveTime) {
+        // No departure set — auto-fill default
+        gMin = leg.groundMin ?? defaultMin;
+        depOverrideTime = new Date(arriveTime.getTime() + gMin * 60000);
+        // Pre-fill the nextDep value for the input
       } else {
-        gMin = leg.groundMin ?? defaultGround;
+        gMin = leg.groundMin ?? defaultMin;
+      }
+
+      // Format the departure time for the input
+      let depInputVal = leg.nextDep || '';
+      if (!depInputVal && depOverrideTime) {
+        // Show the computed default in the input as a starting point
+        const dp = tzParts(depOverrideTime, nextDepTz);
+        // We need full date parts for the input
+        const fp = new Intl.DateTimeFormat('en-CA', { timeZone: nextDepTz, year:'numeric', month:'2-digit', day:'2-digit' }).format(depOverrideTime);
+        const pad = n => n.toString().padStart(2,'0');
+        depInputVal = `${fp}T${pad(dp.h)}:${pad(dp.m)}`;
       }
 
       const gtr = document.createElement('tr');
       gtr.className = 'ground-row';
 
-      let restLabel = '';
+      let label = '';
       if (leg.rest) {
-        restLabel = `<span style="color:#818cf8">🛏 Crew rest at <strong>${esc(leg.arr||'?')}</strong>:</span>`;
-        if (gMin < 600) restLabel += ` <span class="rest-warn">⚠ Below 10h minimum</span>`;
+        label = `<span style="color:#818cf8">🛏 Crew rest at <strong>${esc(leg.arr||'?')}</strong></span>`;
+        if (gMin < 600) label += ` <span class="rest-warn">⚠ Below 10h minimum</span>`;
       } else {
-        restLabel = `⏱ Ground at <strong>${esc(leg.arr||'?')}</strong>:`;
-      }
-
-      // Only show departure time picker on rest stops
-      const showDepPicker = leg.rest;
-      let depPickerHtml = '';
-      if (showDepPicker) {
-        depPickerHtml = `<span class="dim" style="margin-left:0.5rem">Depart</span>
-          <input class="dep-override" type="datetime-local" value="${esc(leg.nextDep||'')}" data-l="${i}">
-          ${leg.nextDep ? `<button class="btn-icon" onclick="legs[${i}].nextDep='';recalc()" title="Clear" style="display:inline-flex;vertical-align:middle">✕</button>` : ''}`;
+        label = `⏱ <strong>${esc(leg.arr||'?')}</strong>`;
       }
 
       gtr.innerHTML = `<td></td>
         <td colspan="6" style="padding-left:1.5rem">
-          ${restLabel}
-          <input class="ground-input ${computed?'computed':''}" type="number" min="0" max="9999" value="${gMin}" data-l="${i}" ${computed?'readonly':''}> min
-          <span class="dim">(${Math.floor(gMin/60)}h ${(gMin%60).toString().padStart(2,'0')}m)</span>
+          ${label}
+          — depart <input class="dep-override" type="datetime-local" value="${esc(depInputVal)}" data-l="${i}">
+          <span class="dim">${nextDepTz ? fmtTzShort(nextDepTz) : ''}</span>
+          <span class="dim" style="margin-left:0.3rem">(${fmtDur(gMin)} ground)</span>
           <button class="rest-toggle ${leg.rest?'active':''}" onclick="toggleRest(${i})">${leg.rest ? '🛏 Rest' : '+ Rest'}</button>
-          ${depPickerHtml}
         </td><td colspan="3"></td>`;
       tbody.appendChild(gtr);
 
-      if (!computed) {
-        gtr.querySelector('.ground-input').addEventListener('change', function() {
-          legs[i].groundMin = parseInt(this.value,10) || 0;
-          legs[i].nextDep = '';
-          recalc();
-        });
-      }
-
-      if (showDepPicker) {
-        gtr.querySelector('.dep-override').addEventListener('change', function() {
-          legs[i].nextDep = this.value;
-          recalc();
-        });
-      }
+      gtr.querySelector('.dep-override').addEventListener('change', function() {
+        legs[i].nextDep = this.value;
+        recalc();
+      });
 
       // Advance clock
       if (depOverrideTime) {
