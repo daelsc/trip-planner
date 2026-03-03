@@ -116,6 +116,18 @@ button:hover { background: #2563eb; }
 .empty-state { text-align: center; padding: 2.5rem 1rem; color: #475569; }
 .empty-state p { font-size: 0.88rem; }
 
+/* Saved trips */
+.trips-dropdown { position: relative; display: inline-block; }
+.trips-menu { display: none; position: absolute; top: 100%; right: 0; background: #1e293b; border: 1px solid #334155; border-radius: 6px; min-width: 280px; max-height: 320px; overflow-y: auto; z-index: 200; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+.trips-menu.open { display: block; }
+.trips-menu .trip-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; cursor: pointer; border-bottom: 1px solid #1e293b; font-size: 0.82rem; }
+.trips-menu .trip-item:hover { background: #334155; }
+.trips-menu .trip-name { font-weight: 500; color: #e2e8f0; }
+.trips-menu .trip-route { color: #64748b; font-size: 0.72rem; }
+.trips-menu .trip-delete { color: #64748b; cursor: pointer; padding: 0.15rem 0.35rem; border-radius: 3px; font-size: 0.75rem; }
+.trips-menu .trip-delete:hover { color: #ef4444; background: #1e293b; }
+.trips-menu .trip-empty { padding: 1rem; text-align: center; color: #64748b; font-size: 0.82rem; }
+
 /* Toast */
 .toast { position: fixed; top: 1rem; right: 1rem; background: #22c55e; color: white; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.82rem; opacity: 0; transition: opacity 0.3s; z-index: 300; pointer-events: none; }
 .toast.show { opacity: 1; }
@@ -170,6 +182,11 @@ button:hover { background: #2563eb; }
   </div>
   <button class="btn-secondary btn-sm" id="fetchWindsBtn" onclick="fetchWinds()">Winds</button>
   <button class="btn-sm" onclick="shareURL()">Share</button>
+  <button class="btn-sm" onclick="saveTrip()">Save</button>
+  <div class="trips-dropdown">
+    <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
+    <div class="trips-menu" id="tripsMenu"></div>
+  </div>
 </div>
 
 <div class="tz-bar" id="tzBar"></div>
@@ -1031,6 +1048,91 @@ function buildURL() {
   return location.origin + location.pathname + '?' + p.toString();
 }
 
+// ── Saved trips ──
+function getTripState() {
+  const p = new URL(buildURL()).searchParams;
+  const state = {};
+  for (const [k, v] of p) state[k] = v;
+  return state;
+}
+
+function saveTrip() {
+  const route = legs.map(l => l.dep).concat(legs.length ? [legs[legs.length-1].arr] : []).filter(Boolean).join(' → ');
+  const defaultName = route || 'New Trip';
+  const name = prompt('Trip name:', defaultName);
+  if (!name) return;
+  const body = { name, state: getTripState() };
+  // Check if we have a loaded trip ID to overwrite
+  if (currentTripId) body.id = currentTripId;
+  fetch('trips.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => r.json())
+    .then(d => {
+      currentTripId = d.id;
+      showToast('Saved');
+    })
+    .catch(() => showToast('Save failed'));
+}
+
+function toggleTripsMenu() {
+  const menu = $('tripsMenu');
+  if (menu.classList.contains('open')) { menu.classList.remove('open'); return; }
+  menu.innerHTML = '<div class="trip-empty">Loading…</div>';
+  menu.classList.add('open');
+  fetch('trips.php')
+    .then(r => r.json())
+    .then(trips => {
+      if (!trips.length) { menu.innerHTML = '<div class="trip-empty">No saved trips</div>'; return; }
+      menu.innerHTML = '';
+      for (const t of trips) {
+        const item = document.createElement('div');
+        item.className = 'trip-item';
+        item.innerHTML = `<div><div class="trip-name">${esc(t.name)}</div><div class="trip-route">${esc(t.route)}</div></div>
+          <span class="trip-delete" data-id="${esc(t.id)}" title="Delete">✕</span>`;
+        item.querySelector('.trip-name').parentElement.addEventListener('click', () => loadTrip(t.id));
+        item.querySelector('.trip-delete').addEventListener('click', e => { e.stopPropagation(); deleteTrip(t.id); });
+        menu.appendChild(item);
+      }
+    })
+    .catch(() => { menu.innerHTML = '<div class="trip-empty">Failed to load</div>'; });
+}
+
+function loadTrip(id) {
+  $('tripsMenu').classList.remove('open');
+  fetch('trips.php?id=' + encodeURIComponent(id))
+    .then(r => r.json())
+    .then(data => {
+      if (!data.state) return;
+      // Build a URL from the saved state and use parseURL
+      const p = new URLSearchParams(data.state);
+      history.replaceState(null, '', '?' + p.toString());
+      currentTripId = id;
+      parseURL();
+      recalc();
+      fetchWinds();
+      showToast('Loaded');
+    })
+    .catch(() => showToast('Load failed'));
+}
+
+function deleteTrip(id) {
+  if (!confirm('Delete this trip?')) return;
+  fetch('trips.php?id=' + encodeURIComponent(id), { method: 'DELETE' })
+    .then(() => {
+      if (currentTripId === id) currentTripId = null;
+      toggleTripsMenu(); // refresh list
+      toggleTripsMenu();
+    })
+    .catch(() => showToast('Delete failed'));
+}
+
+// Close trips menu on outside click
+document.addEventListener('click', e => {
+  const dd = document.querySelector('.trips-dropdown');
+  if (dd && !dd.contains(e.target)) $('tripsMenu').classList.remove('open');
+});
+
+let currentTripId = null;
+
 function shareURL() {
   const url = buildURL();
   history.replaceState(null, '', '?' + new URL(url).search.slice(1));
@@ -1052,9 +1154,12 @@ function fallbackCopy(text) {
   catch { prompt('Copy this URL:', text); }
   document.body.removeChild(ta);
 }
-function showToast() {
-  $('toast').classList.add('show');
-  setTimeout(() => $('toast').classList.remove('show'), 2000);
+function showToast(msg) {
+  const t = $('toast');
+  if (msg) t.textContent = msg;
+  else t.textContent = 'URL copied to clipboard';
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
 }
 
 function parseURL() {
