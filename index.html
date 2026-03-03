@@ -186,6 +186,13 @@ button:hover { background: #2563eb; }
 <div class="settings-bar">
   <h1>Trip Planner</h1>
   <div class="sg">
+    <label>View</label>
+    <select id="viewMode" onchange="recalc()">
+      <option value="pax">Passenger</option>
+      <option value="crew">Crew</option>
+    </select>
+  </div>
+  <div class="sg">
     <label>Aircraft</label>
     <select id="aircraft">
       <option value="G550">G550</option>
@@ -197,18 +204,18 @@ button:hover { background: #2563eb; }
     <label>Spd</label><input type="number" id="pSpeed" placeholder="488" min="50" max="999" title="Cruise speed (kts)">
     <label>FL</label><input type="number" id="pAlt" placeholder="450" min="10" max="600" title="Cruise altitude (flight level)" style="width:4rem">
   </div>
-  <div class="sg">
+  <div class="sg crew-only">
     <label>Start</label><input type="number" id="pStartup" placeholder="15" min="0" max="99" title="Engine startup (min)" style="width:3.5rem">
     <label>Shut</label><input type="number" id="pShutdown" placeholder="10" min="0" max="99" title="Engine shutdown (min)" style="width:3.5rem">
   </div>
-  <div class="sg">
+  <div class="sg crew-only">
     <label>Crew</label>
     <select id="crew">
       <option value="2" selected>2 Pilots</option>
       <option value="1">1 Pilot</option>
     </select>
   </div>
-  <div class="sg">
+  <div class="sg crew-only">
     <label>Show</label>
     <input type="number" id="showTime" placeholder="90" min="0" max="300" title="Crew show/report time before departure (min)" style="width:3.5rem">
     <span class="dim">min</span>
@@ -683,12 +690,16 @@ function recalc() {
   const profile = getProfile();
   const crewCount = getCrewCount();
   const showMin = getShowMin();
+  const isCrew = $('viewMode').value === 'crew';
   const tbody = $('legsBody');
   tbody.innerHTML = '';
 
   $('emptyState').style.display = legs.length ? 'none' : '';
   $('summaryBar').style.display = legs.length ? 'flex' : 'none';
-  $('crewSection').style.display = legs.length ? '' : 'none';
+  $('crewSection').style.display = (legs.length && isCrew) ? '' : 'none';
+
+  // Show/hide crew-only settings
+  document.querySelectorAll('.crew-only').forEach(el => el.style.display = isCrew ? '' : 'none');
 
   const firstDep = legs.length && legs[0].dep ? aptIdx[legs[0].dep] : null;
   const firstTz = firstDep ? firstDep.tz : 'UTC';
@@ -717,12 +728,14 @@ function recalc() {
       showTimeDisplay = fmtTimeCell(showTime, firstTz);
     }
 
-    // Crew show row
-    const showRow = document.createElement('tr');
-    showRow.className = 'show-row';
-    showRow.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${depLabel}</strong> — ${showMin} min before departure</td>
-      <td>${showTimeDisplay}</td><td></td><td></td>`;
-    tbody.appendChild(showRow);
+    // Crew show row (crew view only)
+    if (isCrew) {
+      const showRow = document.createElement('tr');
+      showRow.className = 'show-row';
+      showRow.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${depLabel}</strong> — ${showMin} min before departure</td>
+        <td>${showTimeDisplay}</td><td></td><td></td>`;
+      tbody.appendChild(showRow);
+    }
 
     // Departure time row
     const depRow = document.createElement('tr');
@@ -776,15 +789,17 @@ function recalc() {
       dutyStartTime = new Date(currentTime.getTime() - showMin * 60000);
       const showTz = depTz || firstTz;
 
-      const str = document.createElement('tr');
-      str.className = 'show-row';
-      str.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin} min before departure</td>
-        <td>${fmtTimeCell(dutyStartTime, showTz)}</td><td></td><td></td>`;
-      tbody.appendChild(str);
+      if (isCrew) {
+        const str = document.createElement('tr');
+        str.className = 'show-row';
+        str.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin} min before departure</td>
+          <td>${fmtTimeCell(dutyStartTime, showTz)}</td><td></td><td></td>`;
+        tbody.appendChild(str);
+      }
       needsShowRow = false;
 
       // Departure time row after rest (rendered here so it's next to the departing leg)
-      if (restDepInfo) {
+      if (restDepInfo && isCrew) {
         const rd = restDepInfo;
         const dtr = document.createElement('tr');
         dtr.className = 'ground-row';
@@ -907,9 +922,8 @@ function recalc() {
       // Auto-detect rest: ground time >= 10h qualifies as crew rest
       const isRest = leg.rest || gMin >= 600;
 
-      if (isRest) {
-        // ── Big rest block (departure time renders near next leg) ──
-        // Rest starts 30 min after landing, ends at show time for next leg
+      if (isRest && isCrew) {
+        // ── Big rest block (crew view only) ──
         const restStartTime = arriveTime ? new Date(arriveTime.getTime() + 30 * 60000) : null;
         const restEndTime = depOverrideTime ? new Date(depOverrideTime.getTime() - showMin * 60000) : null;
         const restMin = (restStartTime && restEndTime) ? Math.max(0, (restEndTime - restStartTime) / 60000) : null;
@@ -935,7 +949,7 @@ function recalc() {
         // Store dep time info to render next to the departing leg
         restDepInfo = { depTimeVal, depDateVal, nextDepTz, legIndex: i, gMin };
       } else {
-        // ── Normal ground row ──
+        // ── Ground row (shown in both views) ──
         const gtr = document.createElement('tr');
         gtr.className = 'ground-row';
         gtr.innerHTML = `<td></td>
@@ -945,7 +959,7 @@ function recalc() {
             depart <input class="dep-override" type="time" value="${esc(depTimeVal)}" data-l="${i}" data-f="time">
             <span class="dim">${nextDepTz ? fmtTzShort(nextDepTz) : ''}</span>
             <span class="dim" style="margin-left:0.3rem">(${fmtDur(gMin)} ground)</span>
-            <button class="rest-toggle" onclick="toggleRest(${i})">+ Rest</button>
+            ${isCrew ? `<button class="rest-toggle" onclick="toggleRest(${i})">+ Rest</button>` : ''}
           </td><td colspan="3"></td>`;
         tbody.appendChild(gtr);
 
