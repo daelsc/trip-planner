@@ -949,11 +949,28 @@ function buildURL() {
 
 function shareURL() {
   const url = buildURL();
-  navigator.clipboard.writeText(url).then(() => {
-    $('toast').classList.add('show');
-    setTimeout(() => $('toast').classList.remove('show'), 2000);
-  }).catch(() => prompt('Copy URL:', url));
   history.replaceState(null, '', '?' + new URL(url).search.slice(1));
+  // Clipboard API requires HTTPS; use execCommand fallback for HTTP
+  let copied = false;
+  if (navigator.clipboard && location.protocol === 'https:') {
+    navigator.clipboard.writeText(url).then(() => showToast()).catch(() => fallbackCopy(url));
+  } else {
+    fallbackCopy(url);
+  }
+}
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;left:-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); showToast(); }
+  catch { prompt('Copy this URL:', text); }
+  document.body.removeChild(ta);
+}
+function showToast() {
+  $('toast').classList.add('show');
+  setTimeout(() => $('toast').classList.remove('show'), 2000);
 }
 
 function parseURL() {
