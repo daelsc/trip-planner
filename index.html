@@ -67,6 +67,7 @@ button:hover { background: #2563eb; }
 .ac-icao { font-family: monospace; color: #3b82f6; font-weight: 600; }
 .ac-name { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.icao-city { font-size: 0.68rem; color: #94a3b8; margin-top: 1px; white-space: nowrap; }
 .icao-tz { font-size: 0.68rem; color: #64748b; margin-top: 1px; white-space: nowrap; }
 .arrow { color: #3b82f6; font-weight: bold; }
 .mono { font-family: 'SF Mono', 'Fira Code', monospace; }
@@ -859,9 +860,11 @@ function recalc() {
       }
     }
 
-    // Timezone labels
+    // Timezone labels and city/state
     const depTzLabel = depApt ? fmtTzShort(depApt.tz) : '';
     const arrTzLabel = arrApt ? fmtTzShort(arrApt.tz) : '';
+    const depCity = depApt ? (depApt.city + (depApt.state ? ', ' + depApt.state : '')) : '';
+    const arrCity = arrApt ? (arrApt.city + (arrApt.state ? ', ' + arrApt.state : '')) : '';
 
     // Validation flags
     const depInvalid = leg.dep && leg.dep.length >= 3 && !depApt;
@@ -874,9 +877,9 @@ function recalc() {
     tr.className = 'leg-row' + (legInvalid ? ' invalid' : '');
     tr.innerHTML = `
       <td>${i+1}</td>
-      <td><div class="icao-wrapper"><input class="icao-input${depInvalid ? ' invalid' : ''}" value="${esc(leg.dep)}" data-l="${i}" data-f="dep" placeholder="ICAO" spellcheck="false"></div>${depTzLabel ? `<div class="icao-tz">${depTzLabel}</div>` : ''}${depInvalid ? '<div class="validation-warn">Unknown</div>' : ''}</td>
+      <td><div class="icao-wrapper"><input class="icao-input${depInvalid ? ' invalid' : ''}" value="${esc(leg.dep)}" data-l="${i}" data-f="dep" placeholder="ICAO" spellcheck="false"></div>${depCity ? `<div class="icao-city">${esc(depCity)}</div>` : ''}${depTzLabel ? `<div class="icao-tz">${depTzLabel}</div>` : ''}${depInvalid ? '<div class="validation-warn">Unknown</div>' : ''}</td>
       <td class="arrow">→</td>
-      <td><div class="icao-wrapper"><input class="icao-input${arrInvalid ? ' invalid' : ''}" value="${esc(leg.arr)}" data-l="${i}" data-f="arr" placeholder="ICAO" spellcheck="false"></div>${arrTzLabel ? `<div class="icao-tz">${arrTzLabel}</div>` : ''}${arrInvalid ? '<div class="validation-warn">Unknown</div>' : ''}${sameApt ? '<div class="validation-warn">Same as departure</div>' : ''}</td>
+      <td><div class="icao-wrapper"><input class="icao-input${arrInvalid ? ' invalid' : ''}" value="${esc(leg.arr)}" data-l="${i}" data-f="arr" placeholder="ICAO" spellcheck="false"></div>${arrCity ? `<div class="icao-city">${esc(arrCity)}</div>` : ''}${arrTzLabel ? `<div class="icao-tz">${arrTzLabel}</div>` : ''}${arrInvalid ? '<div class="validation-warn">Unknown</div>' : ''}${sameApt ? '<div class="validation-warn">Same as departure</div>' : ''}</td>
       <td class="mono">${distNm!=null ? Math.round(distNm).toLocaleString() : '—'}</td>
       <td class="mono">${fmtDur(flightMin)}${windHtml}</td>
       <td class="mono">${fmtDur(blockMin)}</td>

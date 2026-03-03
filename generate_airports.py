@@ -79,11 +79,15 @@ def main():
         name = (ap.get("name") or "").strip()
         city = (ap.get("municipality") or "").strip()
         country = (ap.get("iso_country") or "").strip()
+        region = (ap.get("iso_region") or "").strip()
+        # Extract state/province code from iso_region (e.g. "US-NJ" -> "NJ")
+        state = region.split("-", 1)[1] if "-" in region else ""
 
         results.append({
             "icao": icao,
             "name": name,
             "city": city,
+            "state": state,
             "country": country,
             "lat": round(lat_f, 6),
             "lon": round(lon_f, 6),
