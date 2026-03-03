@@ -32,6 +32,7 @@ foreach ($input['flights'] as $i => $leg) {
         'flightRule' => 'IFR',
         'externalId' => $leg['externalId'] ?? "trip-leg-$i",
         'tripId' => $leg['tripId'] ?? null,
+        'dispatcherNotes' => $leg['dispatcherNotes'] ?? null,
     ];
 }
 

@@ -1359,6 +1359,9 @@ function pushToForeFlight() {
     checked.forEach(cb => {
       const i = parseInt(cb.value);
       const leg = legs[i], lc = lastLegCalc[i];
+      const notes = [];
+      if (leg.depFbo) notes.push(`Dep FBO: ${leg.depFbo}`);
+      if (leg.arrFbo) notes.push(`Arr FBO: ${leg.arrFbo}`);
       flights.push({
         departure: leg.dep,
         destination: leg.arr,
@@ -1366,6 +1369,7 @@ function pushToForeFlight() {
         arrivalTime: lc.arriveTime ? lc.arriveTime.toISOString() : undefined,
         externalId: (currentTripId || 'trip') + '-' + leg.dep + '-' + leg.arr,
         tripId: currentTripId || undefined,
+        dispatcherNotes: notes.length ? notes.join('\n') : undefined,
       });
     });
     overlay.remove();
