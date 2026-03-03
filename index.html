@@ -823,9 +823,13 @@ function recalc() {
 
       if (leg.rest) {
         // ── Big rest block (departure time renders near next leg) ──
-        const offDutyTime = arriveTime ? new Date(arriveTime.getTime() + 30 * 60000) : null;
-        const offDutyFmt = offDutyTime && arrTz ? fmtInTz(offDutyTime, arrTz) : null;
-        const restWarn = gMin < 600 ? `<span class="rest-warn" style="margin-left:0.5rem">⚠ Below 10h minimum</span>` : '';
+        // Rest starts 30 min after landing, ends at show time for next leg
+        const restStartTime = arriveTime ? new Date(arriveTime.getTime() + 30 * 60000) : null;
+        const restEndTime = depOverrideTime ? new Date(depOverrideTime.getTime() - showMin * 60000) : null;
+        const restMin = (restStartTime && restEndTime) ? Math.max(0, (restEndTime - restStartTime) / 60000) : null;
+        const restStartFmt = restStartTime && arrTz ? fmtInTz(restStartTime, arrTz) : null;
+        const restEndFmt = restEndTime && nextDepTz ? fmtInTz(restEndTime, nextDepTz) : null;
+        const restWarn = (restMin != null && restMin < 600) ? `<span class="rest-warn" style="margin-left:0.5rem">⚠ Below 10h minimum</span>` : '';
 
         const rtr = document.createElement('tr');
         rtr.className = 'rest-block';
@@ -835,8 +839,9 @@ function recalc() {
               <button class="rest-toggle active" onclick="toggleRest(${i})" style="margin-left:0.5rem">✕ Remove</button>
             </div>
             <div style="margin-top:0.35rem">
-              <span class="rest-duration">${fmtDur(gMin)}</span>
-              ${offDutyFmt ? `<span class="rest-times" style="margin-left:0.75rem">Off duty ${offDutyFmt.time} ${offDutyFmt.abbr} (30 min after landing)</span>` : ''}
+              <span class="rest-duration">${restMin != null ? fmtDur(restMin) : fmtDur(gMin)} rest</span>
+              ${restStartFmt ? `<span class="rest-times" style="margin-left:0.75rem">Off duty ${restStartFmt.time} ${restStartFmt.abbr}</span>` : ''}
+              ${restEndFmt ? `<span class="rest-times"> → On duty ${restEndFmt.time} ${restEndFmt.abbr}</span>` : ''}
             </div>
           </td><td></td>`;
         tbody.appendChild(rtr);
