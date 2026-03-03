@@ -838,13 +838,13 @@ function recalc() {
       const hw = leg.wind.headwind;
       if (isCrew) {
         if (Math.abs(hw) < 3) windHtml = `<div class="wind-info wind-calm">${leg.wind.dir}°/${leg.wind.speed}kt calm</div>`;
-        else if (hw > 0) windHtml = `<div class="wind-info wind-head">${leg.wind.dir}°/${leg.wind.speed}kt ▼${hw}kt head</div>`;
-        else windHtml = `<div class="wind-info wind-tail">${leg.wind.dir}°/${leg.wind.speed}kt ▲${Math.abs(hw)}kt tail</div>`;
+        else if (hw > 0) windHtml = `<div class="wind-info wind-head">${leg.wind.dir}°/${leg.wind.speed}kt ▼${hw}kt</div>`;
+        else windHtml = `<div class="wind-info wind-tail">${leg.wind.dir}°/${leg.wind.speed}kt ▲${Math.abs(hw)}kt</div>`;
         windHtml += `<div class="wind-info dim">GS ${Math.round(gs)} kts</div>`;
       } else {
         if (Math.abs(hw) < 3) windHtml = `<div class="wind-info wind-calm">calm</div>`;
-        else if (hw > 0) windHtml = `<div class="wind-info wind-head">▼${hw}kt head</div>`;
-        else windHtml = `<div class="wind-info wind-tail">▲${Math.abs(hw)}kt tail</div>`;
+        else if (hw > 0) windHtml = `<div class="wind-info wind-head">▼${hw}kt</div>`;
+        else windHtml = `<div class="wind-info wind-tail">▲${Math.abs(hw)}kt</div>`;
       }
     }
 
