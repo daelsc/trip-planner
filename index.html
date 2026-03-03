@@ -1068,17 +1068,20 @@ function updateCrew(legCalc, crewCount, showMin) {
       ? (legCalc[i+1].departTime - lc.arriveTime) / 60000 : 0;
     const legIsRest = legs[i].rest || legGroundMin >= 600;
     if (i < legs.length - 1 && legIsRest && legCalc[i+1]?.departTime) {
-      // Save this duty day summary
-      daySummaries.push({ day: dutyDay, flightMin: dutyFlightMin, dutyMin, maxFlight, maxDuty, exceeded: worst <= 0 });
+      // Rest duration: 30min after landing to show time before next departure
+      const offDuty = new Date(lc.arriveTime.getTime() + 30 * 60000);
+      const onDuty = new Date(legCalc[i+1].departTime.getTime() - showMin * 60000);
+      const restMin = (onDuty - offDuty) / 60000;
+      daySummaries.push({ day: dutyDay, flightMin: dutyFlightMin, dutyMin, maxFlight, maxDuty, restAfter: restMin });
       dutyDay++;
-      dutyStart = new Date(legCalc[i+1].departTime.getTime() - showMin * 60000);
+      dutyStart = onDuty;
       dutyFlightMin = 0;
       addDutyHeader();
     }
   }
 
-  // Final duty day summary
-  daySummaries.push({ day: dutyDay, flightMin: lastFlightMin, dutyMin: lastDutyMin, maxFlight, maxDuty, exceeded: lastFlightMin > maxFlight || lastDutyMin > maxDuty });
+  // Final duty day summary (no rest after last day)
+  daySummaries.push({ day: dutyDay, flightMin: lastFlightMin, dutyMin: lastDutyMin, maxFlight, maxDuty, restAfter: null });
 
   for (const a of alertList) {
     const div = document.createElement('div');
@@ -1089,10 +1092,19 @@ function updateCrew(legCalc, crewCount, showMin) {
 
   // Passenger view: one line per duty day
   for (const ds of daySummaries) {
-    const bad = ds.flightMin > ds.maxFlight || ds.dutyMin > ds.maxDuty;
+    const issues = [];
+    if (ds.flightMin > ds.maxFlight) issues.push(`flight time exceeds ${fmtDur(ds.maxFlight)} limit`);
+    if (ds.dutyMin > ds.maxDuty) issues.push(`duty day exceeds ${fmtDur(ds.maxDuty)} limit`);
+    if (ds.restAfter != null && ds.restAfter < 600) issues.push(`only ${fmtDur(ds.restAfter)} rest (10h minimum required)`);
+
     const div = document.createElement('div');
-    div.style.cssText = `font-size:0.82rem;padding:0.35rem 0;color:${bad ? '#ef4444' : '#94a3b8'}`;
-    div.textContent = `Day ${ds.day}: ${fmtDur(ds.flightMin)} flight / ${fmtDur(ds.dutyMin)} duty${bad ? ' — EXCEEDS LIMITS' : ''}`;
+    if (issues.length) {
+      div.style.cssText = 'font-size:0.82rem;padding:0.35rem 0;color:#ef4444';
+      div.textContent = `Day ${ds.day}: ${fmtDur(ds.flightMin)} flight / ${fmtDur(ds.dutyMin)} duty — ${issues.join('; ')}`;
+    } else {
+      div.style.cssText = 'font-size:0.82rem;padding:0.35rem 0;color:#94a3b8';
+      div.innerHTML = `Day ${ds.day}: ${fmtDur(ds.flightMin)} flight / ${fmtDur(ds.dutyMin)} duty <span style="color:#22c55e;font-weight:600;margin-left:0.4rem">OK</span>`;
+    }
     paxDiv.appendChild(div);
   }
 }
