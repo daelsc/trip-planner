@@ -1330,7 +1330,8 @@ function sharePaxLink() {
 }
 
 function pushToForeFlight() {
-  if (!legs.length || !lastLegCalc.length) { showToast('No legs to push'); return; }
+  if (!legs.length) { alert('Add legs before pushing to ForeFlight.'); return; }
+  if (!lastLegCalc.length) { alert('No calculated leg data. Make sure a start time is set.'); return; }
   // Build valid legs list
   const validLegs = [];
   for (let i = 0; i < legs.length; i++) {
@@ -1338,7 +1339,7 @@ function pushToForeFlight() {
     if (!leg.dep || !leg.arr || !lc?.departTime) continue;
     validLegs.push({ idx: i, leg, lc });
   }
-  if (!validLegs.length) { showToast('No valid legs'); return; }
+  if (!validLegs.length) { alert('No valid legs to push. Make sure airports and a start time are set.'); return; }
   // Build dialog
   const overlay = document.createElement('div');
   overlay.className = 'ff-overlay';
