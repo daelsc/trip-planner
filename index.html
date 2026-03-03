@@ -1364,7 +1364,7 @@ function pushToForeFlight() {
         destination: leg.arr,
         departureTime: lc.departTime.toISOString(),
         arrivalTime: lc.arriveTime ? lc.arriveTime.toISOString() : undefined,
-        externalId: (currentTripId || 'trip') + '-leg-' + i,
+        externalId: (currentTripId || 'trip') + '-' + leg.dep + '-' + leg.arr,
         tripId: currentTripId || undefined,
       });
     });

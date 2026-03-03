@@ -25,7 +25,6 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 .fbo-name { font-weight: 600; font-size: 0.82rem; }
 .fbo-detail { font-size: 0.8rem; color: #666; }
 .fbo-detail a { color: #2563eb; text-decoration: none; }
-.leg-map { width: 100%; height: 180px; object-fit: cover; display: block; border-bottom: 1px solid #e0e0e0; }
 .no-trip { text-align: center; padding: 3rem; color: #999; }
 .loading { text-align: center; padding: 3rem; color: #999; }
 @media print {
@@ -281,15 +280,6 @@ async function loadAndRender() {
     const { leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime, depFboInfo, arrFboInfo } = c;
 
     html += `<div class="leg">`;
-
-    // Map
-    if (depApt && arrApt) {
-      const mapW = 680, mapH = 180;
-      const path = encodeURIComponent(`color:0x2563eb|weight:3|${depApt.lat},${depApt.lon}|${arrApt.lat},${arrApt.lon}`);
-      const markers = `markers=color:0x2563eb%7Csize:small%7C${depApt.lat},${depApt.lon}&markers=color:0xdc2626%7Csize:small%7C${arrApt.lat},${arrApt.lon}`;
-      const mapUrl = `https://maps.googleapis.com/maps/api/staticmap?size=${mapW}x${mapH}&path=${path}&${markers}&style=feature:all|saturation:-80&style=feature:road|visibility:off&style=feature:poi|visibility:off&style=feature:transit|visibility:off&key=AIzaSyARWRAq_K1p3jVwTDCG17TBKDIHKrgKbHo`;
-      html += `<img class="leg-map" src="${mapUrl}" alt="${esc(leg.dep)} to ${esc(leg.arr)}">`;
-    }
 
     html += `<div class="leg-body">`;
 

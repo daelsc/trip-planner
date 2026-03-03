@@ -30,7 +30,6 @@ foreach ($input['flights'] as $i => $leg) {
         'scheduledTimeOfDeparture' => $leg['departureTime'],
         'scheduledTimeOfArrival' => $leg['arrivalTime'] ?? null,
         'flightRule' => 'IFR',
-        'createdBy' => 'Flight Planner',
         'externalId' => $leg['externalId'] ?? "trip-leg-$i",
         'tripId' => $leg['tripId'] ?? null,
     ];
