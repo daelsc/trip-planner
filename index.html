@@ -43,10 +43,6 @@ button:hover { background: #2563eb; }
 .container { max-width: 1300px; margin: 0 auto; padding: 1rem; }
 
 /* Summary cards */
-.summary-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.summary-card { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0.85rem; }
-.summary-card .label { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-.summary-card .value { font-size: 1rem; font-weight: 600; font-family: 'SF Mono', 'Fira Code', monospace; }
 
 /* Leg table */
 .legs-section { margin-bottom: 1.5rem; }
@@ -168,7 +164,6 @@ button:hover { background: #2563eb; }
 @media (max-width: 900px) {
   .settings-bar { gap: 0.4rem; }
   .leg-table { font-size: 0.75rem; }
-  .summary-card { padding: 0.35rem 0.5rem; }
 }
 </style>
 </head>
@@ -240,13 +235,6 @@ button:hover { background: #2563eb; }
 <div class="tz-bar" id="tzBar"></div>
 
 <div class="container">
-  <div class="summary-bar" id="summaryBar" style="display:none">
-    <div class="summary-card"><div class="label">Distance</div><div class="value" id="sDist">—</div></div>
-    <div class="summary-card"><div class="label">Flight Time</div><div class="value" id="sFlight">—</div></div>
-    <div class="summary-card"><div class="label">Block Time</div><div class="value" id="sBlock">—</div></div>
-    <div class="summary-card"><div class="label">Total Elapsed</div><div class="value" id="sElapsed">—</div></div>
-    <div class="summary-card"><div class="label">Legs</div><div class="value" id="sLegs">—</div></div>
-  </div>
 
   <div class="legs-section">
     <h2>Trip Legs</h2>
@@ -695,7 +683,6 @@ function recalc() {
   tbody.innerHTML = '';
 
   $('emptyState').style.display = legs.length ? 'none' : '';
-  $('summaryBar').style.display = legs.length ? 'flex' : 'none';
   $('crewSection').style.display = (legs.length && isCrew) ? '' : 'none';
 
   // Show/hide crew-only settings
@@ -992,11 +979,6 @@ function recalc() {
   const lastArrive = legCalc[legCalc.length-1]?.arriveTime;
   const elapsed = (firstDepart && lastArrive) ? (lastArrive - firstDepart)/60000 : null;
 
-  $('sDist').textContent = totalDist > 0 ? Math.round(totalDist).toLocaleString() + ' nm' : '—';
-  $('sFlight').textContent = totalFlightMin > 0 ? fmtDur(totalFlightMin) : '—';
-  $('sBlock').textContent = totalBlockMin > 0 ? fmtDur(totalBlockMin) : '—';
-  $('sElapsed').textContent = elapsed ? fmtDur(elapsed) : '—';
-  $('sLegs').textContent = legs.length;
 
   // Auto-populate extra timezones from trip airports
   autoPopulateTZ();
