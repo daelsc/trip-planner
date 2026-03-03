@@ -199,7 +199,14 @@ button:hover { background: #2563eb; }
       <tbody id="legsBody"></tbody>
     </table>
     <div id="emptyState" class="empty-state"><p>Add your first leg to start planning.</p></div>
-    <div style="margin-top:0.5rem"><button onclick="addLeg()">+ Add Leg</button></div>
+    <div style="margin-top:0.5rem;display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+      <button onclick="addLeg()">+ Add Leg</button>
+      <span class="dim">or</span>
+      <input id="routeInput" type="text" placeholder="KTEB KHOU KLAS KSFO" spellcheck="false"
+        style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.3rem 0.5rem;border-radius:4px;font-family:monospace;font-size:0.85rem;width:20rem;text-transform:uppercase"
+        title="Enter airports separated by spaces, commas, or dashes">
+      <button class="btn-secondary" onclick="loadRoute()">Load Route</button>
+    </div>
   </div>
 
   <div class="crew-section" id="crewSection" style="display:none">
@@ -490,6 +497,25 @@ function moveLeg(i, dir) {
   [legs[i], legs[j]] = [legs[j], legs[i]];
   recalc();
 }
+function loadRoute() {
+  const input = $('routeInput');
+  const codes = input.value.toUpperCase().trim().split(/[\s,\-→>]+/).filter(Boolean);
+  if (codes.length < 2) return;
+  legs = [];
+  for (let i = 0; i < codes.length - 1; i++) {
+    legs.push({ dep: codes[i], arr: codes[i+1], groundMin: null, rest: false, wind: null, nextDep: '' });
+  }
+  input.value = '';
+  recalc();
+  // Auto-fetch winds for the new route
+  if (legs.some(l => aptIdx[l.dep] && aptIdx[l.arr])) fetchWinds();
+}
+// Allow Enter key on route input
+document.addEventListener('DOMContentLoaded', () => {
+  const ri = $('routeInput');
+  if (ri) ri.addEventListener('keydown', e => { if (e.key === 'Enter') loadRoute(); });
+});
+
 function toggleRest(i) {
   legs[i].rest = !legs[i].rest;
   // If enabling rest and ground time is less than 600 min, default to 600
