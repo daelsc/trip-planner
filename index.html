@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flight Trip Planner</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.5; }
+h1 { font-size: 1.25rem; font-weight: 600; }
+h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }
+
+/* Settings bar */
+.settings-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.75rem 1rem; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.settings-bar label { font-size: 0.8rem; color: #94a3b8; margin-right: 0.25rem; }
+.settings-bar select, .settings-bar input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.35rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+.settings-bar select:focus, .settings-bar input:focus { outline: none; border-color: #3b82f6; }
+.settings-bar input[type="number"] { width: 5rem; }
+.settings-bar input[type="datetime-local"] { width: 13rem; }
+.settings-group { display: flex; align-items: center; gap: 0.35rem; }
+button { background: #3b82f6; color: white; border: none; padding: 0.4rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; }
+button:hover { background: #2563eb; }
+button.secondary { background: #334155; }
+button.secondary:hover { background: #475569; }
+button.danger { background: #dc2626; padding: 0.25rem 0.5rem; font-size: 0.75rem; }
+button.danger:hover { background: #b91c1c; }
+button.small { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
+
+/* Main content */
+.container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+
+/* Leg table */
+.legs-section { margin-bottom: 1.5rem; }
+.leg-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.leg-table th { text-align: left; padding: 0.5rem; color: #64748b; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
+.leg-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #1e293b; vertical-align: middle; }
+.leg-table tr:hover { background: #1e293b; }
+.leg-row td { white-space: nowrap; }
+.ground-row { background: #1a1f2e; }
+.ground-row td { padding: 0.25rem 0.5rem; font-size: 0.8rem; color: #64748b; border-bottom: 1px solid #1e293b; }
+
+/* ICAO input + autocomplete */
+.icao-wrapper { position: relative; display: inline-block; }
+.icao-input { width: 5.5rem; text-transform: uppercase; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.3rem 0.4rem; border-radius: 4px; }
+.icao-input:focus { outline: none; border-color: #3b82f6; }
+.autocomplete-list { position: absolute; top: 100%; left: 0; background: #1e293b; border: 1px solid #334155; border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 100; min-width: 280px; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+.autocomplete-list.open { display: block; }
+.ac-item { padding: 0.35rem 0.5rem; cursor: pointer; font-size: 0.8rem; display: flex; justify-content: space-between; }
+.ac-item:hover, .ac-item.selected { background: #334155; }
+.ac-item .ac-icao { font-family: monospace; color: #3b82f6; font-weight: 600; margin-right: 0.5rem; }
+.ac-item .ac-name { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ground-input { width: 4rem; text-align: center; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.2rem 0.3rem; border-radius: 4px; font-size: 0.8rem; }
+.ground-input:focus { outline: none; border-color: #3b82f6; }
+
+.arrow { color: #3b82f6; font-weight: bold; padding: 0 0.25rem; }
+.mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+.zulu { color: #64748b; font-size: 0.8rem; }
+.date-label { color: #f59e0b; font-size: 0.7rem; font-weight: 500; }
+.add-leg-row td { padding: 0.5rem; border: none; }
+
+/* Leg controls */
+.leg-controls { display: flex; gap: 0.2rem; }
+.leg-controls button { background: #334155; color: #94a3b8; border: none; width: 1.5rem; height: 1.5rem; display: flex; align-items: center; justify-content: center; border-radius: 3px; cursor: pointer; font-size: 0.7rem; padding: 0; }
+.leg-controls button:hover { background: #475569; color: #e2e8f0; }
+
+/* Summary bar */
+.summary-bar { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.summary-card { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 0.6rem 1rem; min-width: 140px; }
+.summary-card .label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.summary-card .value { font-size: 1.1rem; font-weight: 600; font-family: monospace; }
+
+/* Crew rest tracker */
+.crew-section { margin-top: 1.5rem; }
+.crew-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.crew-table th { text-align: left; padding: 0.5rem; color: #64748b; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
+.crew-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #1e293b; }
+.status-green { color: #22c55e; }
+.status-yellow { color: #f59e0b; }
+.status-red { color: #ef4444; font-weight: 600; }
+.rest-suggestion { background: #1e293b; border-left: 3px solid #f59e0b; padding: 0.5rem 0.75rem; margin-top: 0.5rem; font-size: 0.85rem; border-radius: 0 4px 4px 0; }
+.rest-suggestion.critical { border-left-color: #ef4444; }
+
+/* Toast */
+.toast { position: fixed; top: 1rem; right: 1rem; background: #22c55e; color: white; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; opacity: 0; transition: opacity 0.3s; z-index: 200; pointer-events: none; }
+.toast.show { opacity: 1; }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 3rem 1rem; color: #475569; }
+.empty-state p { font-size: 0.9rem; margin-bottom: 0.5rem; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .settings-bar { gap: 0.5rem; }
+  .leg-table { font-size: 0.75rem; }
+  .summary-bar { gap: 0.5rem; }
+  .summary-card { min-width: 100px; padding: 0.4rem 0.6rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="settings-bar">
+  <h1>Flight Trip Planner</h1>
+  <div class="settings-group">
+    <label for="aircraft">Aircraft</label>
+    <select id="aircraft">
+      <option value="G550">Gulfstream G550</option>
+      <option value="PC12">Pilatus PC-12</option>
+      <option value="custom">Custom</option>
+    </select>
+  </div>
+  <div class="settings-group" id="profileFields">
+    <label>Spd</label><input type="number" id="profileSpeed" placeholder="488" min="50" max="999" title="Cruise speed (kts)">
+    <label>Start</label><input type="number" id="profileStartup" placeholder="15" min="0" max="99" title="Startup time (min)">
+    <label>Shut</label><input type="number" id="profileShutdown" placeholder="10" min="0" max="99" title="Shutdown time (min)">
+  </div>
+  <div class="settings-group">
+    <label for="crew">Crew</label>
+    <select id="crew">
+      <option value="1">1 Pilot</option>
+      <option value="2">2 Pilots</option>
+    </select>
+  </div>
+  <div class="settings-group">
+    <label for="startTime">Depart</label>
+    <input type="datetime-local" id="startTime">
+  </div>
+  <button onclick="shareURL()" title="Copy shareable URL to clipboard">Share</button>
+</div>
+
+<div class="container">
+  <div class="summary-bar" id="summaryBar" style="display:none">
+    <div class="summary-card"><div class="label">Total Distance</div><div class="value" id="totalDist">—</div></div>
+    <div class="summary-card"><div class="label">Total Flight</div><div class="value" id="totalFlight">—</div></div>
+    <div class="summary-card"><div class="label">Total Block</div><div class="value" id="totalBlock">—</div></div>
+    <div class="summary-card"><div class="label">Total Time</div><div class="value" id="totalTime">—</div></div>
+    <div class="summary-card"><div class="label">Legs</div><div class="value" id="totalLegs">—</div></div>
+  </div>
+
+  <div class="legs-section">
+    <h2>Trip Legs</h2>
+    <table class="leg-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>From</th>
+          <th></th>
+          <th>To</th>
+          <th>Dist (nm)</th>
+          <th>Flight</th>
+          <th>Block</th>
+          <th>Depart</th>
+          <th>Arrive</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="legsBody"></tbody>
+    </table>
+    <div id="emptyState" class="empty-state">
+      <p>No legs added yet. Add your first leg to start planning.</p>
+    </div>
+    <div style="margin-top:0.5rem;">
+      <button onclick="addLeg()">+ Add Leg</button>
+    </div>
+  </div>
+
+  <div class="crew-section" id="crewSection" style="display:none">
+    <h2>Crew Rest &amp; Duty Tracker</h2>
+    <table class="crew-table">
+      <thead>
+        <tr>
+          <th>After Leg</th>
+          <th>Cumulative Flight (24h)</th>
+          <th>Duty Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="crewBody"></tbody>
+    </table>
+    <div id="crewAlerts"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast">URL copied to clipboard</div>
+
+<script>
+// ── Aircraft profiles ──
+const PROFILES = {
+  G550: { speed: 488, startup: 15, shutdown: 10 },
+  PC12: { speed: 270, startup: 10, shutdown: 5 },
+};
+
+// ── State ──
+let airports = [];
+let airportIndex = {};  // icao -> airport object
+let legs = [];          // [{dep, arr, groundMin (after this leg)}]
+
+// ── Airport loading ──
+fetch('airports.json').then(r => r.json()).then(data => {
+  airports = data;
+  for (const a of airports) airportIndex[a.icao] = a;
+  parseURLState();
+  recalc();
+}).catch(err => {
+  document.getElementById('emptyState').innerHTML =
+    '<p style="color:#ef4444">Failed to load airport data. Serve via HTTP (not file://).</p>' +
+    '<p><code>python3 -m http.server 8080</code></p>';
+});
+
+// ── Helpers ──
+function getProfile() {
+  const type = document.getElementById('aircraft').value;
+  const base = PROFILES[type] || { speed: 250, startup: 10, shutdown: 5 };
+  return {
+    speed: num(document.getElementById('profileSpeed').value) || base.speed,
+    startup: numOrNull(document.getElementById('profileStartup').value) ?? base.startup,
+    shutdown: numOrNull(document.getElementById('profileShutdown').value) ?? base.shutdown,
+  };
+}
+
+function updatePlaceholders() {
+  const type = document.getElementById('aircraft').value;
+  const base = PROFILES[type] || { speed: '', startup: '', shutdown: '' };
+  document.getElementById('profileSpeed').placeholder = base.speed || 'kts';
+  document.getElementById('profileStartup').placeholder = base.startup ?? 'min';
+  document.getElementById('profileShutdown').placeholder = base.shutdown ?? 'min';
+}
+
+function num(v) { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
+function numOrNull(v) { const n = parseInt(v, 10); return isNaN(n) ? null : n; }
+function getCrewCount() { return parseInt(document.getElementById('crew').value, 10); }
+
+// Haversine
+function haversineNm(lat1, lon1, lat2, lon2) {
+  const R = 3440.065; // Earth radius in nm
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function formatDuration(minutes) {
+  if (!minutes || minutes < 0) return '—';
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h > 0 ? `${h}h ${m.toString().padStart(2,'0')}m` : `${m}m`;
+}
+
+function formatTime(date, tz) {
+  if (!date) return { local: '—', zulu: '—', dateStr: '' };
+  const local = date.toLocaleString('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+  const localDate = date.toLocaleString('en-US', { timeZone: tz, month: 'short', day: 'numeric' });
+  const zulu = date.toLocaleString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false }) + 'Z';
+  return { local, zulu, dateStr: localDate };
+}
+
+function tzAbbrev(date, tz) {
+  try {
+    return date.toLocaleString('en-US', { timeZone: tz, timeZoneName: 'short' }).split(' ').pop();
+  } catch { return ''; }
+}
+
+// ── Autocomplete ──
+function searchAirports(query) {
+  if (!query || query.length < 2) return [];
+  const q = query.toUpperCase();
+  const results = [];
+  for (const a of airports) {
+    if (results.length >= 10) break;
+    if (a.icao.startsWith(q) || a.name.toUpperCase().includes(q) || (a.city && a.city.toUpperCase().includes(q))) {
+      results.push(a);
+    }
+  }
+  return results;
+}
+
+function setupAutocomplete(input, legIdx, field) {
+  const wrapper = input.parentElement;
+  let list = wrapper.querySelector('.autocomplete-list');
+  if (!list) {
+    list = document.createElement('div');
+    list.className = 'autocomplete-list';
+    wrapper.appendChild(list);
+  }
+  let selIdx = -1;
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    const results = searchAirports(q);
+    selIdx = -1;
+    if (results.length === 0) { list.classList.remove('open'); return; }
+    list.innerHTML = results.map((a, i) =>
+      `<div class="ac-item" data-idx="${i}"><span class="ac-icao">${a.icao}</span><span class="ac-name">${a.name}${a.city ? ' — ' + a.city : ''}</span></div>`
+    ).join('');
+    list.classList.add('open');
+    list.querySelectorAll('.ac-item').forEach(el => {
+      el.addEventListener('mousedown', e => {
+        e.preventDefault();
+        pick(results[parseInt(el.dataset.idx)]);
+      });
+    });
+  });
+
+  input.addEventListener('keydown', e => {
+    const items = list.querySelectorAll('.ac-item');
+    if (!list.classList.contains('open') || items.length === 0) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); selIdx = Math.min(selIdx + 1, items.length - 1); highlight(items); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); selIdx = Math.max(selIdx - 1, 0); highlight(items); }
+    else if (e.key === 'Enter' && selIdx >= 0) { e.preventDefault(); items[selIdx].dispatchEvent(new MouseEvent('mousedown')); }
+    else if (e.key === 'Escape') { list.classList.remove('open'); }
+  });
+
+  input.addEventListener('blur', () => { setTimeout(() => list.classList.remove('open'), 150); });
+
+  function highlight(items) { items.forEach((el, i) => el.classList.toggle('selected', i === selIdx)); }
+
+  function pick(airport) {
+    input.value = airport.icao;
+    list.classList.remove('open');
+    legs[legIdx][field] = airport.icao;
+    recalc();
+  }
+}
+
+// ── Leg management ──
+function addLeg(dep, arr, ground) {
+  const lastArr = legs.length > 0 ? legs[legs.length - 1].arr : '';
+  legs.push({ dep: dep || lastArr, arr: arr || '', groundMin: ground ?? null });
+  recalc();
+}
+
+function removeLeg(idx) {
+  legs.splice(idx, 1);
+  recalc();
+}
+
+function moveLeg(idx, dir) {
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= legs.length) return;
+  [legs[idx], legs[newIdx]] = [legs[newIdx], legs[idx]];
+  recalc();
+}
+
+// ── Get start time as Date ──
+function getStartTime(depTz) {
+  const val = document.getElementById('startTime').value;
+  if (!val || !val.includes('T')) return null;
+  return dateInTimezone(val, depTz);
+}
+
+function dateInTimezone(datetimeLocal, tz) {
+  // Parse "YYYY-MM-DDTHH:MM" as wall-clock time in the given timezone
+  // Strategy: binary-search for the UTC instant whose wall-clock in tz matches
+  const [datePart, timePart] = datetimeLocal.split('T');
+  const [y, mo, d] = datePart.split('-').map(Number);
+  const [h, m] = timePart.split(':').map(Number);
+
+  // Start with a guess: interpret as UTC
+  let guess = new Date(Date.UTC(y, mo - 1, d, h, m, 0));
+  // Get what that instant looks like in the target tz
+  for (let i = 0; i < 3; i++) {
+    const parts = getPartsInTz(guess, tz);
+    const diffMs = ((h - parts.hour) * 60 + (m - parts.minute)) * 60000;
+    // Handle day wrap
+    const dayDiff = d - parts.day;
+    guess = new Date(guess.getTime() + diffMs + dayDiff * 86400000);
+  }
+  return guess;
+}
+
+function getPartsInTz(date, tz) {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false,
+  });
+  const parts = {};
+  for (const p of fmt.formatToParts(date)) {
+    if (p.type === 'year') parts.year = parseInt(p.value);
+    if (p.type === 'month') parts.month = parseInt(p.value);
+    if (p.type === 'day') parts.day = parseInt(p.value);
+    if (p.type === 'hour') parts.hour = parseInt(p.value) % 24;
+    if (p.type === 'minute') parts.minute = parseInt(p.value);
+  }
+  return parts;
+}
+
+// ── Recalculate everything ──
+function recalc() {
+  const profile = getProfile();
+  const crewCount = getCrewCount();
+  const tbody = document.getElementById('legsBody');
+  tbody.innerHTML = '';
+
+  document.getElementById('emptyState').style.display = legs.length === 0 ? '' : 'none';
+  document.getElementById('summaryBar').style.display = legs.length > 0 ? 'flex' : 'none';
+  document.getElementById('crewSection').style.display = legs.length > 0 ? '' : 'none';
+
+  // Get departure tz of first leg for start time interpretation
+  const firstDep = legs.length > 0 && legs[0].dep ? airportIndex[legs[0].dep] : null;
+  const firstTz = firstDep ? firstDep.tz : 'UTC';
+  let currentTime = getStartTime(firstTz);
+
+  let totalDist = 0, totalFlightMin = 0, totalBlockMin = 0;
+  const legData = []; // computed per-leg data for crew rest
+
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i];
+    const depApt = airportIndex[leg.dep];
+    const arrApt = airportIndex[leg.arr];
+    const depTz = depApt ? depApt.tz : null;
+    const arrTz = arrApt ? arrApt.tz : null;
+
+    // Distance
+    let distNm = null;
+    if (depApt && arrApt) {
+      distNm = haversineNm(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon);
+    }
+
+    // Flight time (minutes)
+    let flightMin = null;
+    if (distNm !== null && profile.speed > 0) {
+      flightMin = (distNm / profile.speed) * 60;
+    }
+
+    // Block time
+    let blockMin = null;
+    if (flightMin !== null) {
+      blockMin = profile.startup + flightMin + profile.shutdown;
+    }
+
+    // Times
+    let departTime = null, arriveTime = null;
+    if (currentTime && blockMin !== null) {
+      departTime = new Date(currentTime.getTime());
+      arriveTime = new Date(currentTime.getTime() + blockMin * 60000);
+    }
+
+    if (distNm !== null) totalDist += distNm;
+    if (flightMin !== null) totalFlightMin += flightMin;
+    if (blockMin !== null) totalBlockMin += blockMin;
+
+    const depFmt = departTime && depTz ? formatTime(departTime, depTz) : { local: '—', zulu: '', dateStr: '' };
+    const arrFmt = arriveTime && arrTz ? formatTime(arriveTime, arrTz) : { local: '—', zulu: '', dateStr: '' };
+
+    // Timezone abbreviations
+    const depTzAbbr = departTime && depTz ? tzAbbrev(departTime, depTz) : '';
+    const arrTzAbbr = arriveTime && arrTz ? tzAbbrev(arriveTime, arrTz) : '';
+
+    // Build row
+    const tr = document.createElement('tr');
+    tr.className = 'leg-row';
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td><div class="icao-wrapper"><input class="icao-input" value="${esc(leg.dep)}" data-leg="${i}" data-field="dep" placeholder="ICAO" spellcheck="false"></div></td>
+      <td class="arrow">→</td>
+      <td><div class="icao-wrapper"><input class="icao-input" value="${esc(leg.arr)}" data-leg="${i}" data-field="arr" placeholder="ICAO" spellcheck="false"></div></td>
+      <td class="mono">${distNm !== null ? Math.round(distNm).toLocaleString() : '—'}</td>
+      <td class="mono">${formatDuration(flightMin)}</td>
+      <td class="mono">${formatDuration(blockMin)}</td>
+      <td>${depFmt.local !== '—' ? `<span class="mono">${depFmt.local}</span> <span class="zulu">${depTzAbbr}</span><br><span class="zulu">${depFmt.zulu}</span>${depFmt.dateStr ? ` <span class="date-label">${depFmt.dateStr}</span>` : ''}` : '—'}</td>
+      <td>${arrFmt.local !== '—' ? `<span class="mono">${arrFmt.local}</span> <span class="zulu">${arrTzAbbr}</span><br><span class="zulu">${arrFmt.zulu}</span>${arrFmt.dateStr ? ` <span class="date-label">${arrFmt.dateStr}</span>` : ''}` : '—'}</td>
+      <td>
+        <div class="leg-controls">
+          <button onclick="moveLeg(${i},-1)" title="Move up">▲</button>
+          <button onclick="moveLeg(${i},1)" title="Move down">▼</button>
+          <button onclick="removeLeg(${i})" title="Delete leg" style="color:#ef4444">✕</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+
+    // Setup autocomplete on the inputs
+    const inputs = tr.querySelectorAll('.icao-input');
+    inputs.forEach(inp => {
+      const li = parseInt(inp.dataset.leg);
+      const f = inp.dataset.field;
+      setupAutocomplete(inp, li, f);
+      inp.addEventListener('change', () => { legs[li][f] = inp.value.toUpperCase().trim(); recalc(); });
+      inp.addEventListener('blur', () => { inp.value = inp.value.toUpperCase().trim(); legs[li][f] = inp.value; recalc(); });
+    });
+
+    // Save computed data
+    legData.push({ distNm, flightMin, blockMin, departTime, arriveTime, depTz, arrTz });
+
+    // Ground time row (between legs, not after last)
+    if (i < legs.length - 1) {
+      const defaultGround = profile.startup + profile.shutdown;
+      const groundMin = leg.groundMin ?? defaultGround;
+      const gtr = document.createElement('tr');
+      gtr.className = 'ground-row';
+      gtr.innerHTML = `
+        <td></td>
+        <td colspan="6" style="padding-left:2rem">
+          ⏱ Ground time at <strong>${esc(legs[i].arr || '?')}</strong>:
+          <input class="ground-input" type="number" min="0" max="999" value="${groundMin}" data-leg="${i}"> min
+          <span class="zulu">(default: ${defaultGround}m)</span>
+        </td>
+        <td colspan="3"></td>
+      `;
+      tbody.appendChild(gtr);
+      const gi = gtr.querySelector('.ground-input');
+      gi.addEventListener('change', () => { legs[i].groundMin = parseInt(gi.value, 10) || 0; recalc(); });
+
+      // Advance clock
+      if (arriveTime) {
+        currentTime = new Date(arriveTime.getTime() + groundMin * 60000);
+      }
+    } else {
+      // Last leg: no ground row, clock ends at arrival
+      if (arriveTime) currentTime = arriveTime;
+    }
+  }
+
+  // Summary
+  const firstDepart = legData.length > 0 ? legData[0].departTime : null;
+  const lastArrive = legData.length > 0 ? legData[legData.length - 1].arriveTime : null;
+  const totalElapsedMin = (firstDepart && lastArrive) ? (lastArrive - firstDepart) / 60000 : null;
+
+  document.getElementById('totalDist').textContent = totalDist > 0 ? Math.round(totalDist).toLocaleString() + ' nm' : '—';
+  document.getElementById('totalFlight').textContent = totalFlightMin > 0 ? formatDuration(totalFlightMin) : '—';
+  document.getElementById('totalBlock').textContent = totalBlockMin > 0 ? formatDuration(totalBlockMin) : '—';
+  document.getElementById('totalTime').textContent = totalElapsedMin ? formatDuration(totalElapsedMin) : '—';
+  document.getElementById('totalLegs').textContent = legs.length;
+
+  // ── Crew rest / duty ──
+  updateCrewTracker(legData, crewCount, profile);
+}
+
+function updateCrewTracker(legData, crewCount, profile) {
+  const tbody = document.getElementById('crewBody');
+  const alertsDiv = document.getElementById('crewAlerts');
+  tbody.innerHTML = '';
+  alertsDiv.innerHTML = '';
+
+  if (legData.length === 0) return;
+
+  const maxFlight = crewCount >= 2 ? 10 * 60 : 8 * 60; // minutes
+  const maxDuty = 14 * 60; // minutes
+  const minRest = 10 * 60; // minutes
+
+  // Duty starts at first leg departure, running total of flight time in trailing 24h
+  const firstDepart = legData[0].departTime;
+  if (!firstDepart) return;
+
+  const alerts = [];
+
+  for (let i = 0; i < legData.length; i++) {
+    const ld = legData[i];
+    if (!ld.arriveTime || !ld.flightMin) continue;
+
+    // Cumulative flight time in trailing 24h from this leg's arrival
+    let flight24h = 0;
+    for (let j = 0; j <= i; j++) {
+      if (!legData[j].departTime || !legData[j].flightMin) continue;
+      const hoursAgo = (ld.arriveTime - legData[j].departTime) / 3600000;
+      if (hoursAgo <= 24) flight24h += legData[j].flightMin;
+    }
+
+    // Duty time: first departure to this arrival
+    const dutyMin = (ld.arriveTime - firstDepart) / 60000;
+
+    // Status
+    const flightRemain = maxFlight - flight24h;
+    const dutyRemain = maxDuty - dutyMin;
+    const worstRemain = Math.min(flightRemain, dutyRemain);
+
+    let statusClass, statusText;
+    if (worstRemain <= 0) {
+      statusClass = 'status-red';
+      statusText = 'EXCEEDED';
+    } else if (worstRemain <= 60) {
+      statusClass = 'status-yellow';
+      statusText = `${Math.round(worstRemain)}m remaining`;
+    } else {
+      statusClass = 'status-green';
+      statusText = 'OK';
+    }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>Leg ${i + 1} (${esc(legs[i].dep)} → ${esc(legs[i].arr)})</td>
+      <td class="mono">${formatDuration(flight24h)} / ${formatDuration(maxFlight)}</td>
+      <td class="mono">${formatDuration(dutyMin)} / ${formatDuration(maxDuty)}</td>
+      <td class="${statusClass}">${statusText}</td>
+    `;
+    tbody.appendChild(tr);
+
+    // Generate alerts
+    if (flightRemain <= 0) {
+      const overBy = Math.abs(flightRemain);
+      alerts.push({ leg: i + 1, critical: true, msg: `Leg ${i + 1} exceeds flight time limit by ${formatDuration(overBy)}. Crew rest required before this leg. Minimum rest stop: ${formatDuration(minRest)}.` });
+    } else if (dutyRemain <= 0) {
+      const overBy = Math.abs(dutyRemain);
+      alerts.push({ leg: i + 1, critical: true, msg: `Leg ${i + 1} exceeds duty time limit by ${formatDuration(overBy)}. Crew rest required before this leg. Minimum rest stop: ${formatDuration(minRest)}.` });
+    } else if (worstRemain <= 60) {
+      if (flightRemain <= 60) {
+        alerts.push({ leg: i + 1, critical: false, msg: `After leg ${i + 1}: only ${Math.round(flightRemain)}m of flight time remaining in 24h window. Consider scheduling rest.` });
+      }
+      if (dutyRemain <= 60) {
+        alerts.push({ leg: i + 1, critical: false, msg: `After leg ${i + 1}: only ${Math.round(dutyRemain)}m of duty time remaining. Consider scheduling rest.` });
+      }
+    }
+  }
+
+  for (const a of alerts) {
+    const div = document.createElement('div');
+    div.className = 'rest-suggestion' + (a.critical ? ' critical' : '');
+    div.textContent = a.msg;
+    alertsDiv.appendChild(div);
+  }
+}
+
+function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Settings change handlers ──
+document.getElementById('aircraft').addEventListener('change', () => {
+  // Clear overrides when switching aircraft
+  document.getElementById('profileSpeed').value = '';
+  document.getElementById('profileStartup').value = '';
+  document.getElementById('profileShutdown').value = '';
+  updatePlaceholders();
+  recalc();
+});
+document.getElementById('profileSpeed').addEventListener('change', recalc);
+document.getElementById('profileStartup').addEventListener('change', recalc);
+document.getElementById('profileShutdown').addEventListener('change', recalc);
+document.getElementById('crew').addEventListener('change', recalc);
+document.getElementById('startTime').addEventListener('change', recalc);
+updatePlaceholders();
+
+// ── URL sharing ──
+function buildURL() {
+  const params = new URLSearchParams();
+  const type = document.getElementById('aircraft').value;
+  params.set('a', type);
+  // Speed/startup/shutdown overrides
+  const os = document.getElementById('profileSpeed').value;
+  const osu = document.getElementById('profileStartup').value;
+  const osd = document.getElementById('profileShutdown').value;
+  if (os) params.set('os', os);
+  if (osu) params.set('osu', osu);
+  if (osd) params.set('osd', osd);
+
+  params.set('c', getCrewCount());
+  const t = document.getElementById('startTime').value;
+  if (t) params.set('t', t);
+  if (legs.length > 0) {
+    params.set('l', legs.map(l => `${l.dep}-${l.arr}`).join(','));
+    const grounds = legs.slice(0, -1).map(l => l.groundMin ?? '');
+    if (grounds.some(g => g !== '')) params.set('g', grounds.join(','));
+  }
+  return window.location.origin + window.location.pathname + '?' + params.toString();
+}
+
+function shareURL() {
+  const url = buildURL();
+  navigator.clipboard.writeText(url).then(() => {
+    const toast = document.getElementById('toast');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+  }).catch(() => {
+    // Fallback
+    prompt('Copy this URL:', url);
+  });
+  // Also update browser URL without reload
+  history.replaceState(null, '', '?' + new URL(url).search.slice(1));
+}
+
+function parseURLState() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('a') && !params.has('l')) return;
+
+  // Aircraft
+  const a = params.get('a') || 'G550';
+  document.getElementById('aircraft').value = a;
+  updatePlaceholders();
+
+  // Overrides
+  if (params.has('os')) document.getElementById('profileSpeed').value = params.get('os');
+  if (params.has('osu')) document.getElementById('profileStartup').value = params.get('osu');
+  if (params.has('osd')) document.getElementById('profileShutdown').value = params.get('osd');
+
+  // Crew
+  if (params.has('c')) document.getElementById('crew').value = params.get('c');
+
+  // Start time
+  if (params.has('t')) document.getElementById('startTime').value = params.get('t');
+
+  // Legs
+  if (params.has('l')) {
+    const legPairs = params.get('l').split(',');
+    const grounds = params.has('g') ? params.get('g').split(',') : [];
+    legs = legPairs.map((pair, i) => {
+      const [dep, arr] = pair.split('-');
+      return { dep: dep || '', arr: arr || '', groundMin: grounds[i] !== undefined && grounds[i] !== '' ? parseInt(grounds[i], 10) : null };
+    });
+  }
+}
+
+// Default start time: now, rounded to next 15min
+function setDefaultStartTime() {
+  if (document.getElementById('startTime').value) return;
+  const now = new Date();
+  now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
+  const pad = n => n.toString().padStart(2, '0');
+  document.getElementById('startTime').value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+setDefaultStartTime();
+</script>
+</body>
+</html>
