@@ -83,7 +83,7 @@ button:hover { background: #2563eb; }
 .ground-input { width: 4rem; text-align: center; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.2rem 0.3rem; border-radius: 4px; font-size: 0.78rem; }
 .ground-input:focus { outline: none; border-color: #3b82f6; }
 .ground-input.computed { color: #64748b; border-style: dashed; }
-.dep-override { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.2rem 0.3rem; border-radius: 4px; font-size: 0.78rem; width: 6.5rem; font-family: 'SF Mono','Fira Code',monospace; }
+.dep-override { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.2rem 0.3rem; border-radius: 4px; font-size: 0.78rem; width: 3.8rem; font-family: 'SF Mono','Fira Code',monospace; text-align: center; }
 .date-input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.2rem 0.3rem; border-radius: 4px; font-size: 0.78rem; width: 9rem; }
 .dep-override:focus { outline: none; border-color: #3b82f6; }
 .rest-warn { color: #f59e0b; font-size: 0.73rem; }
@@ -364,6 +364,20 @@ const airportsPromise = fetch('airports.json').then(r=>r.json()).then(data => {
 });
 
 // ── Utility ──
+function normalizeTime(v) {
+  v = v.replace(/[^0-9:]/g, '');
+  // Accept "1430" or "14:30" or "930" or "9:30"
+  if (/^\d{3,4}$/.test(v)) v = v.slice(0,-2) + ':' + v.slice(-2);
+  const m = v.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return '';
+  const h = parseInt(m[1],10), mn = parseInt(m[2],10);
+  if (h > 23 || mn > 59) return '';
+  return h.toString().padStart(2,'0') + ':' + mn.toString().padStart(2,'0');
+}
+function setupTimeInput(el, onUpdate) {
+  el.addEventListener('blur', () => { const n = normalizeTime(el.value); el.value = n; onUpdate(n); });
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } });
+}
 function num(v) { const n = parseInt(v,10); return isNaN(n) ? 0 : n; }
 function numOr(v, d) { const n = parseInt(v,10); return isNaN(n) ? d : n; }
 function numNull(v) { const n = parseInt(v,10); return isNaN(n) ? null : n; }
@@ -739,7 +753,7 @@ function recalc() {
     depRow.innerHTML = `<td></td><td colspan="6" style="padding-left:1.5rem">
       ⏱ <strong>${depLabel}</strong> —
       <input class="date-input" type="date" id="startDateInline" value="${esc(startDate)}" title="Trip date">
-      depart <input class="dep-override" type="time" id="startTimeInline" value="${esc(startTime)}" title="Departure time (local)">
+      depart <input class="dep-override" type="text" id="startTimeInline" value="${esc(startTime)}" placeholder="HH:MM" maxlength="5" title="Departure time (local 24h)">
       ${firstDep ? `<span class="dim">${fmtTzShort(firstTz)}</span>` : ''}
     </td><td colspan="3"></td>`;
     tbody.appendChild(depRow);
@@ -754,7 +768,7 @@ function recalc() {
       recalc();
     }
     depRow.querySelector('#startDateInline').addEventListener('change', syncStartTime);
-    depRow.querySelector('#startTimeInline').addEventListener('change', syncStartTime);
+    setupTimeInput(depRow.querySelector('#startTimeInline'), syncStartTime);
 
     // Mark first leg's show row as handled
     needsShowRow = false;
@@ -803,15 +817,12 @@ function recalc() {
           <td colspan="6" style="padding-left:1.5rem">
             ⏱ <strong>${esc(leg.dep||'?')}</strong>
             — <input class="date-input" type="date" value="${esc(rd.depDateVal)}" data-l="${rd.legIndex}" data-f="date">
-            depart <input class="dep-override" type="time" value="${esc(rd.depTimeVal)}" data-l="${rd.legIndex}" data-f="time">
+            depart <input class="dep-override" type="text" value="${esc(rd.depTimeVal)}" data-l="${rd.legIndex}" data-f="time" placeholder="HH:MM" maxlength="5">
             <span class="dim">${rd.nextDepTz ? fmtTzShort(rd.nextDepTz) : ''}</span>
             <span class="dim" style="margin-left:0.3rem">(${fmtDur(rd.gMin)} ground)</span>
           </td><td colspan="3"></td>`;
         tbody.appendChild(dtr);
-        dtr.querySelector('[data-f="time"]').addEventListener('change', function() {
-          legs[rd.legIndex].nextDep = this.value;
-          recalc();
-        });
+        setupTimeInput(dtr.querySelector('[data-f="time"]'), v => { legs[rd.legIndex].nextDep = v; recalc(); });
         dtr.querySelector('[data-f="date"]').addEventListener('change', function() {
           legs[rd.legIndex].nextDepDate = this.value;
           recalc();
@@ -972,17 +983,14 @@ function recalc() {
           <td colspan="6" style="padding-left:1.5rem">
             ⏱ <strong>${esc(leg.arr||'?')}</strong>
             — <input class="date-input" type="date" value="${esc(depDateVal)}" data-l="${i}" data-f="date">
-            depart <input class="dep-override" type="time" value="${esc(depTimeVal)}" data-l="${i}" data-f="time">
+            depart <input class="dep-override" type="text" value="${esc(depTimeVal)}" data-l="${i}" data-f="time" placeholder="HH:MM" maxlength="5">
             <span class="dim">${nextDepTz ? fmtTzShort(nextDepTz) : ''}</span>
             <span class="dim" style="margin-left:0.3rem">(${fmtDur(gMin)} ground)</span>
             ${groundInvalid ? `<span class="validation-warn">⚠ ${groundWarnMsg}</span>` : ''}
           </td><td colspan="3"></td>`;
         tbody.appendChild(gtr);
 
-        gtr.querySelector('[data-f="time"]').addEventListener('change', function() {
-          legs[i].nextDep = this.value;
-          recalc();
-        });
+        setupTimeInput(gtr.querySelector('[data-f="time"]'), v => { legs[i].nextDep = v; recalc(); });
         gtr.querySelector('[data-f="date"]').addEventListener('change', function() {
           legs[i].nextDepDate = this.value;
           recalc();
