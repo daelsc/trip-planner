@@ -23,8 +23,8 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 .time-date { color: #999; font-size: 0.75rem; }
 .fbo-info { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #eee; }
 .fbo-name { font-weight: 600; font-size: 0.82rem; }
-.fbo-phone { font-size: 0.8rem; color: #666; }
-.fbo-phone a { color: #2563eb; text-decoration: none; }
+.fbo-detail { font-size: 0.8rem; color: #666; }
+.fbo-detail a { color: #2563eb; text-decoration: none; }
 .no-trip { text-align: center; padding: 3rem; color: #999; }
 .loading { text-align: center; padding: 3rem; color: #999; }
 @media print {
@@ -297,7 +297,8 @@ async function loadAndRender() {
     if (depFboInfo) {
       html += `<div class="fbo-info">`;
       html += `<div class="fbo-name">${esc(depFboInfo.name)}</div>`;
-      if (depFboInfo.phone) html += `<div class="fbo-phone"><a href="tel:${esc(depFboInfo.phone)}">${esc(depFboInfo.phone)}</a></div>`;
+      if (depFboInfo.address) html += `<div class="fbo-detail">${esc(depFboInfo.address)}</div>`;
+      if (depFboInfo.phone) html += `<div class="fbo-detail"><a href="tel:${esc(depFboInfo.phone)}">${esc(depFboInfo.phone)}</a></div>`;
       html += `</div>`;
     }
     html += `</div>`;
@@ -317,7 +318,8 @@ async function loadAndRender() {
     if (arrFboInfo) {
       html += `<div class="fbo-info">`;
       html += `<div class="fbo-name">${esc(arrFboInfo.name)}</div>`;
-      if (arrFboInfo.phone) html += `<div class="fbo-phone"><a href="tel:${esc(arrFboInfo.phone)}">${esc(arrFboInfo.phone)}</a></div>`;
+      if (arrFboInfo.address) html += `<div class="fbo-detail">${esc(arrFboInfo.address)}</div>`;
+      if (arrFboInfo.phone) html += `<div class="fbo-detail"><a href="tel:${esc(arrFboInfo.phone)}">${esc(arrFboInfo.phone)}</a></div>`;
       html += `</div>`;
     }
     html += `</div>`;

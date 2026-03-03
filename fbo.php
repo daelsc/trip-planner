@@ -2,6 +2,8 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
+$GOOGLE_PLACES_KEY = 'AIzaSyARWRAq_K1p3jVwTDCG17TBKDIHKrgKbHo';
+
 $icao = strtoupper(trim($_GET['icao'] ?? ''));
 if (!preg_match('/^[A-Z0-9]{3,4}$/', $icao)) {
     http_response_code(400);
@@ -22,6 +24,21 @@ if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < $cacheMaxAge) 
     exit;
 }
 
+// Load airport names for better search queries
+$airportName = '';
+$apFile = __DIR__ . '/airports.json';
+if (file_exists($apFile)) {
+    $airports = json_decode(file_get_contents($apFile), true);
+    if ($airports) {
+        foreach ($airports as $ap) {
+            if (($ap['icao'] ?? '') === $icao) {
+                $airportName = $ap['name'] ?? '';
+                break;
+            }
+        }
+    }
+}
+
 // Fetch from AirNav
 $url = "https://www.airnav.com/airport/$icao";
 $ctx = stream_context_create(['http' => [
@@ -39,9 +56,33 @@ if ($html === false) {
 // Parse FBOs
 $fbos = parseFbos($html);
 
+// Look up addresses via Google Places
+foreach ($fbos as &$fbo) {
+    $query = $fbo['name'] . ' ' . ($airportName ?: $icao);
+    $address = placesLookup($query, $GOOGLE_PLACES_KEY);
+    if ($address) $fbo['address'] = $address;
+}
+unset($fbo);
+
 $result = json_encode(['icao' => $icao, 'fbos' => $fbos]);
 file_put_contents($cacheFile, $result);
 echo $result;
+
+function placesLookup($query, $key) {
+    $payload = json_encode(['textQuery' => $query]);
+    $ctx = stream_context_create(['http' => [
+        'method' => 'POST',
+        'header' => "Content-Type: application/json\r\n" .
+                    "X-Goog-Api-Key: $key\r\n" .
+                    "X-Goog-FieldMask: places.formattedAddress\r\n",
+        'content' => $payload,
+        'timeout' => 10,
+    ]]);
+    $resp = @file_get_contents('https://places.googleapis.com/v1/places:searchText', false, $ctx);
+    if (!$resp) return null;
+    $data = json_decode($resp, true);
+    return $data['places'][0]['formattedAddress'] ?? null;
+}
 
 function parseFbos($html) {
     // Find FBO section
