@@ -655,22 +655,32 @@ function recalc() {
 
     // Show time row (before first leg and after rest stops)
     if (needsShowRow && currentTime && showMin > 0) {
-      // Duty starts showMin before departure
-      const showStart = new Date(currentTime.getTime());
-      dutyStartTime = showStart;
+      dutyStartTime = new Date(currentTime.getTime() - showMin * 60000);
       const showTz = depTz || firstTz;
+
+      // If previous leg was a rest stop, include departure time picker here
+      const prevLeg = i > 0 ? legs[i-1] : null;
+      let depPickerHtml = '';
+      if (prevLeg && prevLeg.rest && prevLeg._depInputVal !== undefined) {
+        depPickerHtml = ` — depart <input class="dep-override" type="datetime-local" value="${esc(prevLeg._depInputVal)}" data-l="${i-1}">
+          <span class="dim">${prevLeg._nextDepTz ? fmtTzShort(prevLeg._nextDepTz) : ''}</span>`;
+      }
+
       const str = document.createElement('tr');
       str.className = 'show-row';
-      str.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin}min before departure</td>
-        <td>${fmtTimeCell(showStart, showTz)}</td><td></td><td></td>`;
-      tbody.appendChild(str);
-      // Advance show time into departure: current time already is at departure (show time is before)
-      // Actually we need: show time = departure - showMin, so duty starts earlier
-      // But currentTime is departure time, so showStart = currentTime - showMin
-      dutyStartTime = new Date(currentTime.getTime() - showMin * 60000);
-      // Update the show row with correct time
-      str.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin} min before departure</td>
+      str.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin} min before departure${depPickerHtml}</td>
         <td>${fmtTimeCell(dutyStartTime, showTz)}</td><td></td><td></td>`;
+      tbody.appendChild(str);
+
+      if (prevLeg && prevLeg.rest) {
+        const depInput = str.querySelector('.dep-override');
+        if (depInput) {
+          depInput.addEventListener('change', function() {
+            legs[i-1].nextDep = this.value;
+            recalc();
+          });
+        }
+      }
       needsShowRow = false;
     }
 
@@ -768,7 +778,6 @@ function recalc() {
       if (leg.rest) {
         // ── Big rest block ──
         const arrFmtLocal = arriveTime && arrTz ? fmtInTz(arriveTime, arrTz) : null;
-        const depFmtLocal = depOverrideTime && nextDepTz ? fmtInTz(depOverrideTime, nextDepTz) : null;
         const restWarn = gMin < 600 ? `<span class="rest-warn" style="margin-left:0.5rem">⚠ Below 10h minimum</span>` : '';
 
         const rtr = document.createElement('tr');
@@ -782,17 +791,13 @@ function recalc() {
               <span class="rest-duration">${fmtDur(gMin)}</span>
               ${arrFmtLocal ? `<span class="rest-times" style="margin-left:0.75rem">Off duty ${arrFmtLocal.time} ${arrFmtLocal.abbr}</span>` : ''}
             </div>
-            <div class="rest-times" style="margin-top:0.3rem">
-              Depart <input class="dep-override" type="datetime-local" value="${esc(depInputVal)}" data-l="${i}">
-              <span class="dim">${nextDepTz ? fmtTzShort(nextDepTz) : ''}</span>
-            </div>
           </td><td></td>`;
         tbody.appendChild(rtr);
 
-        rtr.querySelector('.dep-override').addEventListener('change', function() {
-          legs[i].nextDep = this.value;
-          recalc();
-        });
+        // Departure time goes into the show row after the rest block
+        // Store it so the show row can include it
+        leg._depInputVal = depInputVal;
+        leg._nextDepTz = nextDepTz;
       } else {
         // ── Normal ground row ──
         const gtr = document.createElement('tr');
