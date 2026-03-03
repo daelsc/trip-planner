@@ -143,6 +143,9 @@ async function loadAndRender() {
   const base = PROFILES[aircraftType] || PROFILES.custom;
   const profile = {
     speed: p.os ? +p.os : base.speed,
+    climbSpeed: p.oc ? +p.oc : (base.climbSpeed || null),
+    descentSpeed: p.od ? +p.od : (base.descentSpeed || null),
+    phaseMin: base.phaseMin || null,
     startup: p.osu != null ? +p.osu : base.startup,
     shutdown: p.osd != null ? +p.osd : base.shutdown,
   };

@@ -1193,8 +1193,10 @@ updatePlaceholders();
 function buildURL() {
   const p = new URLSearchParams();
   p.set('a', $('aircraft').value);
-  const os = $('pSpeed').value, osu = $('pStartup').value, osd = $('pShutdown').value, ofl = $('pAlt').value;
+  const oc = $('pClimb').value, os = $('pSpeed').value, od = $('pDescent').value, osu = $('pStartup').value, osd = $('pShutdown').value, ofl = $('pAlt').value;
+  if (oc) p.set('oc', oc);
   if (os) p.set('os', os);
+  if (od) p.set('od', od);
   if (osu) p.set('osu', osu);
   if (osd) p.set('osd', osd);
   if (ofl) p.set('fl', ofl);
@@ -1417,7 +1419,9 @@ function parseURL() {
   if (!p.has('a') && !p.has('l')) return;
   $('aircraft').value = p.get('a') || 'G550';
   updatePlaceholders();
+  if (p.has('oc')) $('pClimb').value = p.get('oc');
   if (p.has('os')) $('pSpeed').value = p.get('os');
+  if (p.has('od')) $('pDescent').value = p.get('od');
   if (p.has('osu')) $('pStartup').value = p.get('osu');
   if (p.has('osd')) $('pShutdown').value = p.get('osd');
   if (p.has('fl')) $('pAlt').value = p.get('fl');
