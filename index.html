@@ -153,6 +153,13 @@ button:hover { background: #2563eb; }
 .home-new:hover { background: #2563eb; }
 .home-empty { color: #475569; font-size: 0.88rem; margin-bottom: 1rem; }
 
+.login-screen { display: flex; justify-content: center; align-items: center; min-height: 80vh; }
+.login-box { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 2rem; width: 280px; text-align: center; }
+.login-box h2 { font-size: 1rem; margin-bottom: 1rem; color: #e2e8f0; }
+.login-box input { width: 100%; padding: 0.5rem; background: #0f172a; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-size: 0.9rem; margin-bottom: 0.75rem; }
+.login-box input:focus { outline: none; border-color: #3b82f6; }
+.login-box button { width: 100%; padding: 0.5rem; background: #3b82f6; color: white; border: none; border-radius: 4px; font-size: 0.9rem; cursor: pointer; }
+.login-box .login-err { color: #ef4444; font-size: 0.8rem; margin-bottom: 0.5rem; }
 @media (max-width: 900px) {
   .settings-bar { gap: 0.4rem; }
   .leg-table { font-size: 0.75rem; }
@@ -161,8 +168,18 @@ button:hover { background: #2563eb; }
 </head>
 <body>
 
+<!-- Login screen -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <h2>Trip Planner</h2>
+    <div class="login-err" id="loginErr" style="display:none"></div>
+    <input type="password" id="loginPass" placeholder="Password" autofocus>
+    <button onclick="doLogin()">Log In</button>
+  </div>
+</div>
+
 <!-- Home screen -->
-<div id="homeScreen" class="home-screen">
+<div id="homeScreen" class="home-screen" style="display:none">
   <h1>Trip Planner</h1>
   <div id="homeTrips" class="home-trips"></div>
   <button class="home-new" onclick="startNewTrip()">+ New Trip</button>
@@ -1436,17 +1453,35 @@ function loadTripAndShow(id) {
     .catch(() => showToast('Load failed'));
 }
 
-// ── Init: show home or planner based on URL ──
-airportsPromise.then(() => {
-  const p = new URLSearchParams(location.search);
-  if (p.has('a') || p.has('l')) {
-    parseURL();
-    showPlanner();
-    recalc();
-    fetchWinds();
-  } else {
-    showHome();
-  }
+// ── Auth ──
+function doLogin() {
+  const pw = $('loginPass').value;
+  fetch('auth.php?action=login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:pw}) })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) { $('loginScreen').style.display='none'; initApp(); }
+      else { $('loginErr').textContent='Wrong password'; $('loginErr').style.display=''; }
+    }).catch(() => { $('loginErr').textContent='Login failed'; $('loginErr').style.display=''; });
+}
+$('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function initApp() {
+  airportsPromise.then(() => {
+    const p = new URLSearchParams(location.search);
+    if (p.has('a') || p.has('l')) {
+      parseURL();
+      showPlanner();
+      recalc();
+      fetchWinds();
+    } else {
+      showHome();
+    }
+  });
+}
+
+// Check auth on load
+fetch('auth.php?action=check').then(r=>r.json()).then(d => {
+  if (d.ok) { $('loginScreen').style.display='none'; initApp(); }
 });
 </script>
 </body>

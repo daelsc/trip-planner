@@ -1,12 +1,19 @@
 <?php
+session_start();
 header('Content-Type: application/json');
+
+// Protect write operations
+$method = $_SERVER['REQUEST_METHOD'];
+if ($method !== 'GET' && empty($_SESSION['authed'])) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Not authenticated']);
+    exit;
+}
 
 $dataDir = __DIR__ . '/saved_trips';
 if (!is_dir($dataDir)) {
     mkdir($dataDir, 0755, true);
 }
-
-$method = $_SERVER['REQUEST_METHOD'];
 $counterFile = "$dataDir/.counter";
 
 function nextTripNumber() {
