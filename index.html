@@ -805,7 +805,8 @@ function recalc() {
         if (Math.abs(hw) < 3) windHtml = `<div class="wind-info wind-calm">${leg.wind.dir}°/${leg.wind.speed}kt calm</div>`;
         else if (hw > 0) windHtml = `<div class="wind-info wind-head">${leg.wind.dir}°/${leg.wind.speed}kt ▼${hw}kt</div>`;
         else windHtml = `<div class="wind-info wind-tail">${leg.wind.dir}°/${leg.wind.speed}kt ▲${Math.abs(hw)}kt</div>`;
-        windHtml += `<div class="wind-info dim">GS ${Math.round(gs)} kts</div>`;
+        const effectiveGs = (distNm != null && flightMin > 0) ? Math.round(distNm / (flightMin / 60)) : Math.round(profile.speed - hw);
+        windHtml += `<div class="wind-info dim">GS ${effectiveGs} kts</div>`;
       } else {
         if (Math.abs(hw) < 3) windHtml = `<div class="wind-info wind-calm">calm</div>`;
         else if (hw > 0) windHtml = `<div class="wind-info wind-head">▼${hw}kt</div>`;
