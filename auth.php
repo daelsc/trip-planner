@@ -2,7 +2,7 @@
 session_start();
 header('Content-Type: application/json');
 
-$PASS_HASH = '$2y$12$ANawHOPFzg7fsbcjkMwwyeq2ywbRubuy0v/CDZAToMCn4XKLy72H.';
+$PASS_HASH = '$2y$12$iv/EUtE2YY0o/8xxs/yUaOT.iIWW.jxJKYdlDXHhmSgjvig0yyxke';
 
 $action = $_GET['action'] ?? '';
 
