@@ -224,6 +224,7 @@ button:hover { background: #2563eb; }
   <input type="hidden" id="startDateStore">
   <input type="hidden" id="startTimeStore">
   <button class="btn-sm" onclick="shareURL()">Share</button>
+  <button class="btn-sm" onclick="sharePaxLink()">Pax Link</button>
   <button class="btn-sm" onclick="saveTrip()">Save</button>
   <div class="trips-dropdown">
     <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
@@ -1368,6 +1369,19 @@ function showToast(msg) {
   else t.textContent = 'URL copied to clipboard';
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function sharePaxLink() {
+  if (!currentTripId) {
+    showToast('Save the trip first');
+    return;
+  }
+  const url = location.origin + location.pathname.replace(/index\.html$/, '') + 'pax.html?id=' + encodeURIComponent(currentTripId);
+  if (navigator.clipboard && location.protocol === 'https:') {
+    navigator.clipboard.writeText(url).then(() => showToast('Passenger link copied')).catch(() => fallbackCopy(url));
+  } else {
+    fallbackCopy(url);
+  }
 }
 
 function parseURL() {

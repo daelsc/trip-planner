@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trip Itinerary</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #fff; color: #1a1a1a; line-height: 1.6; padding: 2rem; max-width: 720px; margin: 0 auto; }
+h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
+.trip-meta { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
+.updated { color: #999; font-size: 0.75rem; margin-bottom: 1.5rem; }
+.leg { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 1rem; overflow: hidden; }
+.leg-header { background: #f5f5f5; padding: 0.6rem 1rem; font-weight: 600; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
+.leg-header .block-time { font-weight: 400; color: #666; font-size: 0.85rem; }
+.leg-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.leg-col { padding: 0.75rem 1rem; }
+.leg-col + .leg-col { border-left: 1px solid #e0e0e0; }
+.leg-col h3 { font-size: 0.7rem; text-transform: uppercase; color: #999; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+.airport-code { font-size: 1.3rem; font-weight: 700; font-family: 'SF Mono', 'Menlo', monospace; }
+.airport-name { font-size: 0.8rem; color: #666; }
+.time-display { margin-top: 0.5rem; }
+.time-primary { font-size: 1.05rem; font-weight: 600; font-family: 'SF Mono', 'Menlo', monospace; }
+.time-tz { color: #666; font-size: 0.8rem; }
+.time-date { color: #999; font-size: 0.75rem; }
+.fbo-info { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #eee; }
+.fbo-name { font-weight: 600; font-size: 0.82rem; }
+.fbo-phone { font-size: 0.8rem; color: #666; }
+.fbo-phone a { color: #2563eb; text-decoration: none; }
+.ground-row { text-align: center; padding: 0.4rem; color: #999; font-size: 0.78rem; }
+.no-trip { text-align: center; padding: 3rem; color: #999; }
+.loading { text-align: center; padding: 3rem; color: #999; }
+@media print {
+  body { padding: 0.5rem; }
+  .updated { display: none; }
+}
+@media (max-width: 500px) {
+  body { padding: 1rem; }
+  .leg-body { grid-template-columns: 1fr; }
+  .leg-col + .leg-col { border-left: none; border-top: 1px solid #e0e0e0; }
+}
+</style>
+</head>
+<body>
+<div id="content" class="loading">Loading trip...</div>
+
+<script>
+const PROFILES = {
+  G550:   { speed: 488, startup: 25, shutdown: 15 },
+  PC12:   { speed: 270, startup: 10, shutdown: 5 },
+  custom: { speed: 250, startup: 10, shutdown: 5 },
+};
+
+const R_NM = 3440.065, toRad = d => d * Math.PI / 180;
+function haversine(lat1, lon1, lat2, lon2) {
+  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2 * R_NM * Math.asin(Math.sqrt(a));
+}
+function bearing(lat1, lon1, lat2, lon2) {
+  const dLon = toRad(lon2-lon1), la1 = toRad(lat1), la2 = toRad(lat2);
+  const y = Math.sin(dLon)*Math.cos(la2);
+  const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+
+function fmtDur(min) {
+  if (min == null || min < 0) return '—';
+  const h = Math.floor(min/60), m = Math.round(min%60);
+  return h > 0 ? `${h}h ${m.toString().padStart(2,'0')}m` : `${m}m`;
+}
+
+function fmtInTz(date, tz) {
+  const time = date.toLocaleString('en-US', { timeZone: tz, hour:'2-digit', minute:'2-digit', hour12: false });
+  let abbr;
+  try { abbr = date.toLocaleString('en-US', { timeZone: tz, timeZoneName:'short' }).split(' ').pop(); }
+  catch { abbr = tz.split('/').pop(); }
+  return { time, abbr };
+}
+
+function fmtDate(date, tz) {
+  return date.toLocaleString('en-US', { timeZone: tz, weekday:'short', month:'short', day:'numeric' });
+}
+
+function dateInTz(dtStr, tz) {
+  const [dp, tp] = dtStr.split('T');
+  const [y,mo,d] = dp.split('-').map(Number);
+  const [h,m] = tp.split(':').map(Number);
+  let guess = new Date(Date.UTC(y, mo-1, d, h, m, 0));
+  for (let i = 0; i < 3; i++) {
+    const f = new Intl.DateTimeFormat('en-US', {
+      timeZone:tz, year:'numeric', month:'numeric', day:'numeric',
+      hour:'numeric', minute:'numeric', hour12:false
+    });
+    const parts = {};
+    for (const {type, value} of f.formatToParts(guess)) parts[type] = +value;
+    const diff = ((h - parts.hour)*60 + (m - parts.minute))*60000 + (d - parts.day)*86400000;
+    guess = new Date(guess.getTime() + diff);
+  }
+  return guess;
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let aptIdx = {};
+const fboCache = {};
+
+async function fetchFbos(icao) {
+  if (!icao || fboCache[icao]) return fboCache[icao] || [];
+  try {
+    const r = await fetch(`fbo.php?icao=${encodeURIComponent(icao)}`);
+    const data = await r.json();
+    fboCache[icao] = data.fbos || [];
+  } catch { fboCache[icao] = []; }
+  return fboCache[icao];
+}
+
+async function loadAndRender() {
+  const params = new URLSearchParams(location.search);
+  const tripId = params.get('id');
+  if (!tripId) {
+    document.getElementById('content').innerHTML = '<div class="no-trip">No trip specified. Add ?id=... to the URL.</div>';
+    return;
+  }
+
+  // Load airports + trip data in parallel
+  const [aptData, tripResp] = await Promise.all([
+    fetch('airports.json').then(r => r.json()),
+    fetch(`trips.php?id=${encodeURIComponent(tripId)}`),
+  ]);
+
+  for (const a of aptData) aptIdx[a.icao] = a;
+
+  if (!tripResp.ok) {
+    document.getElementById('content').innerHTML = '<div class="no-trip">Trip not found.</div>';
+    return;
+  }
+  const trip = await tripResp.json();
+  if (trip.error) {
+    document.getElementById('content').innerHTML = `<div class="no-trip">${esc(trip.error)}</div>`;
+    return;
+  }
+
+  const p = trip.state;
+  const aircraftType = p.a || 'G550';
+  const base = PROFILES[aircraftType] || PROFILES.custom;
+  const profile = {
+    speed: p.os ? +p.os : base.speed,
+    startup: p.osu != null ? +p.osu : base.startup,
+    shutdown: p.osd != null ? +p.osd : base.shutdown,
+  };
+
+  if (!p.l) {
+    document.getElementById('content').innerHTML = '<div class="no-trip">No legs in this trip.</div>';
+    return;
+  }
+
+  const pairs = p.l.split(',');
+  const grounds = p.g ? p.g.split(',') : [];
+  const deps = p.d ? p.d.split(',') : [];
+  const depDates = p.dd ? p.dd.split(',') : [];
+  const dfbos = p.df ? p.df.split('|') : [];
+  const afbos = p.af ? p.af.split('|') : [];
+
+  const legs = pairs.map((pair, i) => {
+    const [dep, arr] = pair.split('-');
+    return {
+      dep: dep||'', arr: arr||'',
+      groundMin: (grounds[i] != null && grounds[i] !== '') ? +grounds[i] : null,
+      nextDep: deps[i] || '',
+      nextDepDate: depDates[i] || '',
+      depFbo: dfbos[i] || '',
+      arrFbo: afbos[i] || '',
+    };
+  });
+
+  // Enforce dep = previous arr
+  for (let i = 1; i < legs.length; i++) {
+    if (legs[i-1].arr) legs[i].dep = legs[i-1].arr;
+  }
+
+  // Pre-fetch FBOs for all airports that have selections
+  const fboPromises = [];
+  for (const leg of legs) {
+    if (leg.depFbo && leg.dep) fboPromises.push(fetchFbos(leg.dep));
+    if (leg.arrFbo && leg.arr) fboPromises.push(fetchFbos(leg.arr));
+  }
+  await Promise.all(fboPromises);
+
+  // Compute times
+  const startVal = p.t || '';
+  let currentTime = null;
+  if (startVal) {
+    const firstDep = legs[0]?.dep;
+    const firstTz = aptIdx[firstDep]?.tz || 'America/New_York';
+    currentTime = dateInTz(startVal, firstTz);
+  }
+
+  const computed = [];
+
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i];
+    const depApt = aptIdx[leg.dep], arrApt = aptIdx[leg.arr];
+    const depTz = depApt?.tz, arrTz = arrApt?.tz;
+
+    let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
+    let gs = profile.speed;
+    let flightMin = (distNm != null && gs > 0) ? (distNm / gs) * 60 : null;
+    let blockMin = (flightMin != null) ? profile.startup + flightMin + profile.shutdown : null;
+
+    let departTime = null, arriveTime = null;
+    if (currentTime && blockMin != null) {
+      departTime = new Date(currentTime.getTime());
+      arriveTime = new Date(currentTime.getTime() + blockMin * 60000);
+    }
+
+    // Find selected FBO info
+    let depFboInfo = null, arrFboInfo = null;
+    if (leg.depFbo && fboCache[leg.dep]) {
+      depFboInfo = fboCache[leg.dep].find(f => f.name === leg.depFbo) || null;
+    }
+    if (leg.arrFbo && fboCache[leg.arr]) {
+      arrFboInfo = fboCache[leg.arr].find(f => f.name === leg.arrFbo) || null;
+    }
+
+    computed.push({ leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime, depFboInfo, arrFboInfo });
+
+    // Advance clock for ground time
+    if (i < legs.length - 1 && arriveTime) {
+      const nextLeg = legs[i+1];
+      const nextDepApt = aptIdx[nextLeg.dep];
+      const nextDepTz = nextDepApt?.tz || arrTz;
+      const defaultMin = profile.startup + profile.shutdown;
+
+      if (leg.nextDep || leg.nextDepDate) {
+        const useDate = leg.nextDepDate || new Intl.DateTimeFormat('en-CA', { timeZone: nextDepTz, year:'numeric', month:'2-digit', day:'2-digit' }).format(arriveTime);
+        const useTime = leg.nextDep || new Intl.DateTimeFormat('en-GB', { timeZone: nextDepTz, hour:'2-digit', minute:'2-digit', hour12:false }).format(arriveTime);
+        let depOverride = dateInTz(`${useDate}T${useTime}`, nextDepTz);
+        while (depOverride < arriveTime) depOverride = new Date(depOverride.getTime() + 86400000);
+        currentTime = depOverride;
+      } else {
+        const gMin = leg.groundMin ?? defaultMin;
+        currentTime = new Date(arriveTime.getTime() + gMin * 60000);
+      }
+    } else if (arriveTime) {
+      currentTime = arriveTime;
+    }
+  }
+
+  // Render
+  let html = `<h1>${esc(trip.name)}</h1>`;
+  html += `<div class="trip-meta">${esc(trip.route)}</div>`;
+
+  for (let i = 0; i < computed.length; i++) {
+    const c = computed[i];
+    const { leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime, depFboInfo, arrFboInfo } = c;
+
+    html += `<div class="leg">`;
+    html += `<div class="leg-header"><span>Leg ${i+1}</span><span class="block-time">${fmtDur(blockMin)} block</span></div>`;
+    html += `<div class="leg-body">`;
+
+    // Departure column
+    html += `<div class="leg-col">`;
+    html += `<h3>Depart</h3>`;
+    html += `<div class="airport-code">${esc(leg.dep)}</div>`;
+    if (depApt) html += `<div class="airport-name">${esc(depApt.city)}${depApt.state ? ', ' + esc(depApt.state) : ''}</div>`;
+    if (departTime && depTz) {
+      const t = fmtInTz(departTime, depTz);
+      html += `<div class="time-display">`;
+      html += `<span class="time-primary">${t.time}</span> <span class="time-tz">${t.abbr}</span>`;
+      html += `<div class="time-date">${fmtDate(departTime, depTz)}</div>`;
+      html += `</div>`;
+    }
+    if (i === 0 && depFboInfo) {
+      html += `<div class="fbo-info">`;
+      html += `<div class="fbo-name">${esc(depFboInfo.name)}</div>`;
+      if (depFboInfo.phone) html += `<div class="fbo-phone"><a href="tel:${esc(depFboInfo.phone)}">${esc(depFboInfo.phone)}</a></div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+
+    // Arrival column
+    html += `<div class="leg-col">`;
+    html += `<h3>Arrive</h3>`;
+    html += `<div class="airport-code">${esc(leg.arr)}</div>`;
+    if (arrApt) html += `<div class="airport-name">${esc(arrApt.city)}${arrApt.state ? ', ' + esc(arrApt.state) : ''}</div>`;
+    if (arriveTime && arrTz) {
+      const t = fmtInTz(arriveTime, arrTz);
+      html += `<div class="time-display">`;
+      html += `<span class="time-primary">${t.time}</span> <span class="time-tz">${t.abbr}</span>`;
+      html += `<div class="time-date">${fmtDate(arriveTime, arrTz)}</div>`;
+      html += `</div>`;
+    }
+    if (arrFboInfo) {
+      html += `<div class="fbo-info">`;
+      html += `<div class="fbo-name">${esc(arrFboInfo.name)}</div>`;
+      if (arrFboInfo.phone) html += `<div class="fbo-phone"><a href="tel:${esc(arrFboInfo.phone)}">${esc(arrFboInfo.phone)}</a></div>`;
+      html += `</div>`;
+    }
+    html += `</div>`;
+
+    html += `</div></div>`;
+
+    // Ground time between legs
+    if (i < computed.length - 1) {
+      const nextDep = computed[i+1].departTime;
+      if (arriveTime && nextDep) {
+        const gMin = Math.round((nextDep - arriveTime) / 60000);
+        html += `<div class="ground-row">${fmtDur(gMin)} on ground</div>`;
+      }
+    }
+  }
+
+  const saved = trip.saved ? new Date(trip.saved) : null;
+  if (saved) {
+    html += `<div class="updated">Last updated ${saved.toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })}</div>`;
+  }
+
+  document.getElementById('content').innerHTML = html;
+  document.title = `${trip.name} — Trip Itinerary`;
+}
+
+// Initial load
+loadAndRender();
+// Auto-refresh every 60 seconds
+setInterval(loadAndRender, 60000);
+</script>
+</body>
+</html>
