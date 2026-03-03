@@ -6,136 +6,173 @@
 <title>Flight Trip Planner</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.5; }
-h1 { font-size: 1.25rem; font-weight: 600; }
-h2 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.5; font-size: 14px; }
+h1 { font-size: 1.15rem; font-weight: 600; white-space: nowrap; }
+h2 { font-weight: 600; margin-bottom: 0.5rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }
 
-/* Settings bar */
-.settings-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.75rem 1rem; display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
-.settings-bar label { font-size: 0.8rem; color: #94a3b8; margin-right: 0.25rem; }
-.settings-bar select, .settings-bar input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.35rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+.settings-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.6rem 1rem; display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.settings-bar label { font-size: 0.78rem; color: #94a3b8; }
+.settings-bar select, .settings-bar input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.3rem 0.45rem; border-radius: 4px; font-size: 0.82rem; }
 .settings-bar select:focus, .settings-bar input:focus { outline: none; border-color: #3b82f6; }
-.settings-bar input[type="number"] { width: 5rem; }
-.settings-bar input[type="datetime-local"] { width: 13rem; }
-.settings-group { display: flex; align-items: center; gap: 0.35rem; }
-button { background: #3b82f6; color: white; border: none; padding: 0.4rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-weight: 500; }
+.settings-bar input[type="number"] { width: 4.5rem; }
+.settings-bar input[type="datetime-local"] { width: 12.5rem; }
+.sg { display: flex; align-items: center; gap: 0.3rem; }
+button { background: #3b82f6; color: white; border: none; padding: 0.35rem 0.7rem; border-radius: 4px; cursor: pointer; font-size: 0.82rem; font-weight: 500; }
 button:hover { background: #2563eb; }
-button.secondary { background: #334155; }
-button.secondary:hover { background: #475569; }
-button.danger { background: #dc2626; padding: 0.25rem 0.5rem; font-size: 0.75rem; }
-button.danger:hover { background: #b91c1c; }
-button.small { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
+.btn-secondary { background: #334155; }
+.btn-secondary:hover { background: #475569; }
+.btn-sm { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
+.btn-icon { background: #334155; color: #94a3b8; border: none; width: 1.5rem; height: 1.5rem; display: flex; align-items: center; justify-content: center; border-radius: 3px; cursor: pointer; font-size: 0.7rem; padding: 0; }
+.btn-icon:hover { background: #475569; color: #e2e8f0; }
 
-/* Main content */
-.container { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+/* Timezone chips */
+.tz-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.3rem 1rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; min-height: 0; }
+.tz-bar:empty { display: none; }
+.tz-chip { display: inline-flex; align-items: center; background: #334155; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.73rem; gap: 0.3rem; color: #94a3b8; }
+.tz-chip .remove { background: none; border: none; color: #64748b; cursor: pointer; padding: 0; font-size: 0.7rem; line-height: 1; }
+.tz-chip .remove:hover { color: #ef4444; }
+
+/* Timezone dropdown */
+.tz-dropdown { position: relative; display: inline-block; }
+.tz-menu { position: absolute; top: 100%; right: 0; background: #1e293b; border: 1px solid #334155; border-radius: 4px; z-index: 200; min-width: 220px; max-height: 280px; overflow-y: auto; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+.tz-menu.open { display: block; }
+.tz-menu label { display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; font-size: 0.8rem; cursor: pointer; color: #e2e8f0; }
+.tz-menu label:hover { background: #334155; }
+.tz-menu input[type="checkbox"] { accent-color: #3b82f6; }
+
+.container { max-width: 1300px; margin: 0 auto; padding: 1rem; }
+
+/* Summary cards */
+.summary-bar { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.summary-card { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0.85rem; }
+.summary-card .label { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.summary-card .value { font-size: 1rem; font-weight: 600; font-family: 'SF Mono', 'Fira Code', monospace; }
 
 /* Leg table */
 .legs-section { margin-bottom: 1.5rem; }
-.leg-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.leg-table th { text-align: left; padding: 0.5rem; color: #64748b; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
-.leg-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #1e293b; vertical-align: middle; }
-.leg-table tr:hover { background: #1e293b; }
+.leg-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.leg-table th { text-align: left; padding: 0.4rem 0.5rem; color: #64748b; font-weight: 500; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; white-space: nowrap; }
+.leg-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #1e293b; vertical-align: top; }
+.leg-table tr:hover { background: rgba(30,41,59,0.5); }
 .leg-row td { white-space: nowrap; }
-.ground-row { background: #1a1f2e; }
-.ground-row td { padding: 0.25rem 0.5rem; font-size: 0.8rem; color: #64748b; border-bottom: 1px solid #1e293b; }
 
-/* ICAO input + autocomplete */
+/* ICAO autocomplete */
 .icao-wrapper { position: relative; display: inline-block; }
-.icao-input { width: 5.5rem; text-transform: uppercase; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.3rem 0.4rem; border-radius: 4px; }
+.icao-input { width: 5.5rem; text-transform: uppercase; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.82rem; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.25rem 0.4rem; border-radius: 4px; }
 .icao-input:focus { outline: none; border-color: #3b82f6; }
-.autocomplete-list { position: absolute; top: 100%; left: 0; background: #1e293b; border: 1px solid #334155; border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 100; min-width: 280px; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
-.autocomplete-list.open { display: block; }
-.ac-item { padding: 0.35rem 0.5rem; cursor: pointer; font-size: 0.8rem; display: flex; justify-content: space-between; }
-.ac-item:hover, .ac-item.selected { background: #334155; }
-.ac-item .ac-icao { font-family: monospace; color: #3b82f6; font-weight: 600; margin-right: 0.5rem; }
-.ac-item .ac-name { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-list { position: absolute; top: 100%; left: 0; background: #1e293b; border: 1px solid #334155; border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 100; min-width: 280px; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+.ac-list.open { display: block; }
+.ac-item { padding: 0.3rem 0.5rem; cursor: pointer; font-size: 0.78rem; display: flex; gap: 0.5rem; }
+.ac-item:hover, .ac-item.sel { background: #334155; }
+.ac-icao { font-family: monospace; color: #3b82f6; font-weight: 600; }
+.ac-name { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.ground-input { width: 4rem; text-align: center; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.2rem 0.3rem; border-radius: 4px; font-size: 0.8rem; }
-.ground-input:focus { outline: none; border-color: #3b82f6; }
-
-.arrow { color: #3b82f6; font-weight: bold; padding: 0 0.25rem; }
+.arrow { color: #3b82f6; font-weight: bold; }
 .mono { font-family: 'SF Mono', 'Fira Code', monospace; }
-.zulu { color: #64748b; font-size: 0.8rem; }
-.date-label { color: #f59e0b; font-size: 0.7rem; font-weight: 500; }
-.add-leg-row td { padding: 0.5rem; border: none; }
+.dim { color: #64748b; font-size: 0.78rem; }
+.date-lbl { color: #f59e0b; font-size: 0.68rem; font-weight: 500; }
+.wind-info { font-size: 0.73rem; margin-top: 2px; }
+.wind-tail { color: #22c55e; }
+.wind-head { color: #ef4444; }
+.wind-calm { color: #64748b; }
 
-/* Leg controls */
-.leg-controls { display: flex; gap: 0.2rem; }
-.leg-controls button { background: #334155; color: #94a3b8; border: none; width: 1.5rem; height: 1.5rem; display: flex; align-items: center; justify-content: center; border-radius: 3px; cursor: pointer; font-size: 0.7rem; padding: 0; }
-.leg-controls button:hover { background: #475569; color: #e2e8f0; }
+/* Ground & rest rows */
+.ground-row { background: #161d2f; }
+.ground-row td { padding: 0.25rem 0.5rem; font-size: 0.78rem; color: #64748b; }
+.ground-input { width: 4rem; text-align: center; background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.2rem 0.3rem; border-radius: 4px; font-size: 0.78rem; }
+.ground-input:focus { outline: none; border-color: #3b82f6; }
+.rest-toggle { font-size: 0.73rem; padding: 0.15rem 0.5rem; border-radius: 3px; cursor: pointer; border: 1px solid #334155; background: #1e293b; color: #94a3b8; }
+.rest-toggle:hover { border-color: #3b82f6; color: #e2e8f0; }
+.rest-toggle.active { background: #1e3a5f; border-color: #3b82f6; color: #60a5fa; }
+.rest-warn { color: #f59e0b; font-size: 0.73rem; }
 
-/* Summary bar */
-.summary-bar { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.summary-card { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 0.6rem 1rem; min-width: 140px; }
-.summary-card .label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
-.summary-card .value { font-size: 1.1rem; font-weight: 600; font-family: monospace; }
+/* Show time row */
+.show-row { background: #1a2332; }
+.show-row td { padding: 0.3rem 0.5rem; font-size: 0.78rem; color: #818cf8; border-bottom: 1px solid #1e293b; }
 
-/* Crew rest tracker */
+/* Crew rest */
 .crew-section { margin-top: 1.5rem; }
-.crew-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.crew-table th { text-align: left; padding: 0.5rem; color: #64748b; font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
-.crew-table td { padding: 0.4rem 0.5rem; border-bottom: 1px solid #1e293b; }
-.status-green { color: #22c55e; }
-.status-yellow { color: #f59e0b; }
-.status-red { color: #ef4444; font-weight: 600; }
-.rest-suggestion { background: #1e293b; border-left: 3px solid #f59e0b; padding: 0.5rem 0.75rem; margin-top: 0.5rem; font-size: 0.85rem; border-radius: 0 4px 4px 0; }
-.rest-suggestion.critical { border-left-color: #ef4444; }
-
-/* Toast */
-.toast { position: fixed; top: 1rem; right: 1rem; background: #22c55e; color: white; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; opacity: 0; transition: opacity 0.3s; z-index: 200; pointer-events: none; }
-.toast.show { opacity: 1; }
+.crew-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.crew-table th { text-align: left; padding: 0.4rem 0.5rem; color: #64748b; font-weight: 500; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155; }
+.crew-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #1e293b; }
+.status-ok { color: #22c55e; }
+.status-warn { color: #f59e0b; }
+.status-bad { color: #ef4444; font-weight: 600; }
+.alert-box { border-left: 3px solid #f59e0b; background: #1e293b; padding: 0.5rem 0.75rem; margin-top: 0.5rem; font-size: 0.82rem; border-radius: 0 4px 4px 0; }
+.alert-box.critical { border-left-color: #ef4444; }
 
 /* Empty state */
-.empty-state { text-align: center; padding: 3rem 1rem; color: #475569; }
-.empty-state p { font-size: 0.9rem; margin-bottom: 0.5rem; }
+.empty-state { text-align: center; padding: 2.5rem 1rem; color: #475569; }
+.empty-state p { font-size: 0.88rem; }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .settings-bar { gap: 0.5rem; }
+/* Toast */
+.toast { position: fixed; top: 1rem; right: 1rem; background: #22c55e; color: white; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.82rem; opacity: 0; transition: opacity 0.3s; z-index: 300; pointer-events: none; }
+.toast.show { opacity: 1; }
+
+/* Loading spinner */
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 900px) {
+  .settings-bar { gap: 0.4rem; }
   .leg-table { font-size: 0.75rem; }
-  .summary-bar { gap: 0.5rem; }
-  .summary-card { min-width: 100px; padding: 0.4rem 0.6rem; }
+  .summary-card { padding: 0.35rem 0.5rem; }
 }
 </style>
 </head>
 <body>
 
 <div class="settings-bar">
-  <h1>Flight Trip Planner</h1>
-  <div class="settings-group">
-    <label for="aircraft">Aircraft</label>
+  <h1>Trip Planner</h1>
+  <div class="sg">
+    <label>Aircraft</label>
     <select id="aircraft">
-      <option value="G550">Gulfstream G550</option>
-      <option value="PC12">Pilatus PC-12</option>
+      <option value="G550">G550</option>
+      <option value="PC12">PC-12</option>
       <option value="custom">Custom</option>
     </select>
   </div>
-  <div class="settings-group" id="profileFields">
-    <label>Spd</label><input type="number" id="profileSpeed" placeholder="488" min="50" max="999" title="Cruise speed (kts)">
-    <label>Start</label><input type="number" id="profileStartup" placeholder="15" min="0" max="99" title="Startup time (min)">
-    <label>Shut</label><input type="number" id="profileShutdown" placeholder="10" min="0" max="99" title="Shutdown time (min)">
+  <div class="sg">
+    <label>Spd</label><input type="number" id="pSpeed" placeholder="488" min="50" max="999" title="Cruise speed (kts)">
+    <label>FL</label><input type="number" id="pAlt" placeholder="450" min="10" max="600" title="Cruise altitude (flight level)" style="width:4rem">
   </div>
-  <div class="settings-group">
-    <label for="crew">Crew</label>
+  <div class="sg">
+    <label>Start</label><input type="number" id="pStartup" placeholder="15" min="0" max="99" title="Engine startup (min)" style="width:3.5rem">
+    <label>Shut</label><input type="number" id="pShutdown" placeholder="10" min="0" max="99" title="Engine shutdown (min)" style="width:3.5rem">
+  </div>
+  <div class="sg">
+    <label>Crew</label>
     <select id="crew">
+      <option value="2" selected>2 Pilots</option>
       <option value="1">1 Pilot</option>
-      <option value="2">2 Pilots</option>
     </select>
   </div>
-  <div class="settings-group">
-    <label for="startTime">Depart</label>
+  <div class="sg">
+    <label>Show</label>
+    <input type="number" id="showTime" value="60" min="0" max="300" title="Crew show/report time before departure (min)" style="width:3.5rem">
+    <span class="dim">min</span>
+  </div>
+  <div class="sg">
+    <label>Depart</label>
     <input type="datetime-local" id="startTime">
   </div>
-  <button onclick="shareURL()" title="Copy shareable URL to clipboard">Share</button>
+  <div class="tz-dropdown">
+    <button class="btn-secondary btn-sm" id="tzBtn">TZ +</button>
+    <div class="tz-menu" id="tzMenu"></div>
+  </div>
+  <button class="btn-secondary btn-sm" id="fetchWindsBtn" onclick="fetchWinds()">Winds</button>
+  <button class="btn-sm" onclick="shareURL()">Share</button>
 </div>
+
+<div class="tz-bar" id="tzBar"></div>
 
 <div class="container">
   <div class="summary-bar" id="summaryBar" style="display:none">
-    <div class="summary-card"><div class="label">Total Distance</div><div class="value" id="totalDist">—</div></div>
-    <div class="summary-card"><div class="label">Total Flight</div><div class="value" id="totalFlight">—</div></div>
-    <div class="summary-card"><div class="label">Total Block</div><div class="value" id="totalBlock">—</div></div>
-    <div class="summary-card"><div class="label">Total Time</div><div class="value" id="totalTime">—</div></div>
-    <div class="summary-card"><div class="label">Legs</div><div class="value" id="totalLegs">—</div></div>
+    <div class="summary-card"><div class="label">Distance</div><div class="value" id="sDist">—</div></div>
+    <div class="summary-card"><div class="label">Flight Time</div><div class="value" id="sFlight">—</div></div>
+    <div class="summary-card"><div class="label">Block Time</div><div class="value" id="sBlock">—</div></div>
+    <div class="summary-card"><div class="label">Total Elapsed</div><div class="value" id="sElapsed">—</div></div>
+    <div class="summary-card"><div class="label">Legs</div><div class="value" id="sLegs">—</div></div>
   </div>
 
   <div class="legs-section">
@@ -147,7 +184,7 @@ button.small { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
           <th>From</th>
           <th></th>
           <th>To</th>
-          <th>Dist (nm)</th>
+          <th>Dist</th>
           <th>Flight</th>
           <th>Block</th>
           <th>Depart</th>
@@ -157,21 +194,17 @@ button.small { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
       </thead>
       <tbody id="legsBody"></tbody>
     </table>
-    <div id="emptyState" class="empty-state">
-      <p>No legs added yet. Add your first leg to start planning.</p>
-    </div>
-    <div style="margin-top:0.5rem;">
-      <button onclick="addLeg()">+ Add Leg</button>
-    </div>
+    <div id="emptyState" class="empty-state"><p>Add your first leg to start planning.</p></div>
+    <div style="margin-top:0.5rem"><button onclick="addLeg()">+ Add Leg</button></div>
   </div>
 
   <div class="crew-section" id="crewSection" style="display:none">
-    <h2>Crew Rest &amp; Duty Tracker</h2>
+    <h2>Crew Duty &amp; Rest</h2>
     <table class="crew-table">
       <thead>
         <tr>
           <th>After Leg</th>
-          <th>Cumulative Flight (24h)</th>
+          <th>Flight (24h)</th>
           <th>Duty Time</th>
           <th>Status</th>
         </tr>
@@ -185,528 +218,645 @@ button.small { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
 <div class="toast" id="toast">URL copied to clipboard</div>
 
 <script>
-// ── Aircraft profiles ──
+// ── Profiles ──
 const PROFILES = {
-  G550: { speed: 488, startup: 15, shutdown: 10 },
-  PC12: { speed: 270, startup: 10, shutdown: 5 },
+  G550:   { speed: 488, startup: 15, shutdown: 10, alt: 450 },
+  PC12:   { speed: 270, startup: 10, shutdown: 5,  alt: 280 },
+  custom: { speed: 250, startup: 10, shutdown: 5,  alt: 350 },
 };
 
-// ── State ──
-let airports = [];
-let airportIndex = {};  // icao -> airport object
-let legs = [];          // [{dep, arr, groundMin (after this leg)}]
+const TIMEZONE_LIST = [
+  ['America/New_York',    'US Eastern'],
+  ['America/Chicago',     'US Central'],
+  ['America/Denver',      'US Mountain'],
+  ['America/Los_Angeles', 'US Pacific'],
+  ['America/Anchorage',   'Alaska'],
+  ['Pacific/Honolulu',    'Hawaii'],
+  ['America/Phoenix',     'Arizona (no DST)'],
+  ['Europe/London',       'London (GMT/BST)'],
+  ['Europe/Paris',        'Paris (CET/CEST)'],
+  ['Asia/Dubai',          'Dubai (GST)'],
+  ['Asia/Tokyo',          'Tokyo (JST)'],
+];
 
-// ── Airport loading ──
-fetch('airports.json').then(r => r.json()).then(data => {
+// Altitude (ft) -> pressure level (hPa) for Open-Meteo
+const ALT_PRESSURE = [
+  [53000,100],[45000,150],[39000,200],[34000,250],[30000,300],
+  [24000,400],[18000,500],[14000,600],[10000,700],[5000,850],[3000,900],
+];
+
+// ── State ──
+let airports = [], aptIdx = {};
+let legs = [];           // {dep, arr, groundMin:null, rest:false, wind:null}
+let extraTZ = [];        // IANA timezone strings
+let windsLoading = false;
+
+// ── Load airports ──
+fetch('airports.json').then(r=>r.json()).then(data => {
   airports = data;
-  for (const a of airports) airportIndex[a.icao] = a;
-  parseURLState();
+  for (const a of airports) aptIdx[a.icao] = a;
+  parseURL();
   recalc();
-}).catch(err => {
+}).catch(() => {
   document.getElementById('emptyState').innerHTML =
-    '<p style="color:#ef4444">Failed to load airport data. Serve via HTTP (not file://).</p>' +
-    '<p><code>python3 -m http.server 8080</code></p>';
+    '<p style="color:#ef4444">Failed to load airport data. Serve via HTTP, not file://.</p>' +
+    '<p style="color:#64748b"><code>python3 -m http.server 8080</code></p>';
 });
 
-// ── Helpers ──
+// ── Utility ──
+function num(v) { const n = parseInt(v,10); return isNaN(n) ? 0 : n; }
+function numOr(v, d) { const n = parseInt(v,10); return isNaN(n) ? d : n; }
+function numNull(v) { const n = parseInt(v,10); return isNaN(n) ? null : n; }
+function $(id) { return document.getElementById(id); }
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 function getProfile() {
-  const type = document.getElementById('aircraft').value;
-  const base = PROFILES[type] || { speed: 250, startup: 10, shutdown: 5 };
+  const t = $('aircraft').value;
+  const b = PROFILES[t] || PROFILES.custom;
   return {
-    speed: num(document.getElementById('profileSpeed').value) || base.speed,
-    startup: numOrNull(document.getElementById('profileStartup').value) ?? base.startup,
-    shutdown: numOrNull(document.getElementById('profileShutdown').value) ?? base.shutdown,
+    speed:    num($('pSpeed').value) || b.speed,
+    startup:  numNull($('pStartup').value) ?? b.startup,
+    shutdown: numNull($('pShutdown').value) ?? b.shutdown,
+    alt:      num($('pAlt').value) || b.alt,
   };
 }
+function getCrewCount() { return num($('crew').value) || 2; }
+function getShowMin() { return numOr($('showTime').value, 60); }
 
 function updatePlaceholders() {
-  const type = document.getElementById('aircraft').value;
-  const base = PROFILES[type] || { speed: '', startup: '', shutdown: '' };
-  document.getElementById('profileSpeed').placeholder = base.speed || 'kts';
-  document.getElementById('profileStartup').placeholder = base.startup ?? 'min';
-  document.getElementById('profileShutdown').placeholder = base.shutdown ?? 'min';
+  const b = PROFILES[$('aircraft').value] || PROFILES.custom;
+  $('pSpeed').placeholder = b.speed;
+  $('pStartup').placeholder = b.startup;
+  $('pShutdown').placeholder = b.shutdown;
+  $('pAlt').placeholder = b.alt;
 }
 
-function num(v) { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
-function numOrNull(v) { const n = parseInt(v, 10); return isNaN(n) ? null : n; }
-function getCrewCount() { return parseInt(document.getElementById('crew').value, 10); }
-
-// Haversine
-function haversineNm(lat1, lon1, lat2, lon2) {
-  const R = 3440.065; // Earth radius in nm
-  const toRad = d => d * Math.PI / 180;
-  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-  return 2 * R * Math.asin(Math.sqrt(a));
+// ── Haversine ──
+const R_NM = 3440.065, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
+function haversine(lat1, lon1, lat2, lon2) {
+  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2 * R_NM * Math.asin(Math.sqrt(a));
+}
+function bearing(lat1, lon1, lat2, lon2) {
+  const dLon = toRad(lon2-lon1), la1 = toRad(lat1), la2 = toRad(lat2);
+  const y = Math.sin(dLon)*Math.cos(la2);
+  const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
-function formatDuration(minutes) {
-  if (!minutes || minutes < 0) return '—';
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
+// ── Time formatting ──
+function fmtDur(min) {
+  if (min == null || min < 0) return '—';
+  const h = Math.floor(min/60), m = Math.round(min%60);
   return h > 0 ? `${h}h ${m.toString().padStart(2,'0')}m` : `${m}m`;
 }
 
-function formatTime(date, tz) {
-  if (!date) return { local: '—', zulu: '—', dateStr: '' };
-  const local = date.toLocaleString('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
-  const localDate = date.toLocaleString('en-US', { timeZone: tz, month: 'short', day: 'numeric' });
-  const zulu = date.toLocaleString('en-US', { timeZone: 'UTC', hour: '2-digit', minute: '2-digit', hour12: false }) + 'Z';
-  return { local, zulu, dateStr: localDate };
-}
-
-function tzAbbrev(date, tz) {
-  try {
-    return date.toLocaleString('en-US', { timeZone: tz, timeZoneName: 'short' }).split(' ').pop();
-  } catch { return ''; }
-}
-
-// ── Autocomplete ──
-function searchAirports(query) {
-  if (!query || query.length < 2) return [];
-  const q = query.toUpperCase();
-  const results = [];
-  for (const a of airports) {
-    if (results.length >= 10) break;
-    if (a.icao.startsWith(q) || a.name.toUpperCase().includes(q) || (a.city && a.city.toUpperCase().includes(q))) {
-      results.push(a);
-    }
+function fmtTimeCell(date, primaryTz) {
+  if (!date || !primaryTz) return '—';
+  const lines = [];
+  // Primary: local time at this airport
+  const loc = fmtInTz(date, primaryTz);
+  lines.push(`<span class="mono">${loc.time}</span> <span class="dim">${loc.abbr}</span>`);
+  // Extra timezones
+  for (const tz of extraTZ) {
+    if (tz === primaryTz) continue;
+    const t = fmtInTz(date, tz);
+    lines.push(`<span class="mono dim">${t.time} ${t.abbr}</span>`);
   }
-  return results;
+  // Zulu
+  const z = fmtInTz(date, 'UTC');
+  const dateStr = date.toLocaleString('en-US', { timeZone: primaryTz, month:'short', day:'numeric' });
+  lines.push(`<span class="dim">${z.time}Z</span> <span class="date-lbl">${dateStr}</span>`);
+  return lines.join('<br>');
 }
 
-function setupAutocomplete(input, legIdx, field) {
-  const wrapper = input.parentElement;
-  let list = wrapper.querySelector('.autocomplete-list');
-  if (!list) {
-    list = document.createElement('div');
-    list.className = 'autocomplete-list';
-    wrapper.appendChild(list);
-  }
-  let selIdx = -1;
-
-  input.addEventListener('input', () => {
-    const q = input.value.trim();
-    const results = searchAirports(q);
-    selIdx = -1;
-    if (results.length === 0) { list.classList.remove('open'); return; }
-    list.innerHTML = results.map((a, i) =>
-      `<div class="ac-item" data-idx="${i}"><span class="ac-icao">${a.icao}</span><span class="ac-name">${a.name}${a.city ? ' — ' + a.city : ''}</span></div>`
-    ).join('');
-    list.classList.add('open');
-    list.querySelectorAll('.ac-item').forEach(el => {
-      el.addEventListener('mousedown', e => {
-        e.preventDefault();
-        pick(results[parseInt(el.dataset.idx)]);
-      });
-    });
-  });
-
-  input.addEventListener('keydown', e => {
-    const items = list.querySelectorAll('.ac-item');
-    if (!list.classList.contains('open') || items.length === 0) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); selIdx = Math.min(selIdx + 1, items.length - 1); highlight(items); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); selIdx = Math.max(selIdx - 1, 0); highlight(items); }
-    else if (e.key === 'Enter' && selIdx >= 0) { e.preventDefault(); items[selIdx].dispatchEvent(new MouseEvent('mousedown')); }
-    else if (e.key === 'Escape') { list.classList.remove('open'); }
-  });
-
-  input.addEventListener('blur', () => { setTimeout(() => list.classList.remove('open'), 150); });
-
-  function highlight(items) { items.forEach((el, i) => el.classList.toggle('selected', i === selIdx)); }
-
-  function pick(airport) {
-    input.value = airport.icao;
-    list.classList.remove('open');
-    legs[legIdx][field] = airport.icao;
-    recalc();
-  }
+function fmtInTz(date, tz) {
+  const time = date.toLocaleString('en-US', { timeZone: tz, hour:'2-digit', minute:'2-digit', hour12:false });
+  let abbr;
+  try { abbr = date.toLocaleString('en-US', { timeZone: tz, timeZoneName:'short' }).split(' ').pop(); }
+  catch { abbr = tz.split('/').pop(); }
+  return { time, abbr };
 }
 
-// ── Leg management ──
-function addLeg(dep, arr, ground) {
-  const lastArr = legs.length > 0 ? legs[legs.length - 1].arr : '';
-  legs.push({ dep: dep || lastArr, arr: arr || '', groundMin: ground ?? null });
-  recalc();
-}
-
-function removeLeg(idx) {
-  legs.splice(idx, 1);
-  recalc();
-}
-
-function moveLeg(idx, dir) {
-  const newIdx = idx + dir;
-  if (newIdx < 0 || newIdx >= legs.length) return;
-  [legs[idx], legs[newIdx]] = [legs[newIdx], legs[idx]];
-  recalc();
-}
-
-// ── Get start time as Date ──
-function getStartTime(depTz) {
-  const val = document.getElementById('startTime').value;
-  if (!val || !val.includes('T')) return null;
-  return dateInTimezone(val, depTz);
-}
-
-function dateInTimezone(datetimeLocal, tz) {
-  // Parse "YYYY-MM-DDTHH:MM" as wall-clock time in the given timezone
-  // Strategy: binary-search for the UTC instant whose wall-clock in tz matches
-  const [datePart, timePart] = datetimeLocal.split('T');
-  const [y, mo, d] = datePart.split('-').map(Number);
-  const [h, m] = timePart.split(':').map(Number);
-
-  // Start with a guess: interpret as UTC
-  let guess = new Date(Date.UTC(y, mo - 1, d, h, m, 0));
-  // Get what that instant looks like in the target tz
+// Parse "YYYY-MM-DDTHH:MM" as wall-clock in given tz → UTC Date
+function dateInTz(dtStr, tz) {
+  const [dp, tp] = dtStr.split('T');
+  const [y,mo,d] = dp.split('-').map(Number);
+  const [h,m] = tp.split(':').map(Number);
+  let guess = new Date(Date.UTC(y, mo-1, d, h, m, 0));
   for (let i = 0; i < 3; i++) {
-    const parts = getPartsInTz(guess, tz);
-    const diffMs = ((h - parts.hour) * 60 + (m - parts.minute)) * 60000;
-    // Handle day wrap
-    const dayDiff = d - parts.day;
-    guess = new Date(guess.getTime() + diffMs + dayDiff * 86400000);
+    const p = tzParts(guess, tz);
+    const diff = ((h - p.h)*60 + (m - p.m))*60000 + (d - p.d)*86400000;
+    guess = new Date(guess.getTime() + diff);
   }
   return guess;
 }
-
-function getPartsInTz(date, tz) {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric',
-    hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false,
+function tzParts(date, tz) {
+  const f = new Intl.DateTimeFormat('en-US', {
+    timeZone:tz, year:'numeric', month:'numeric', day:'numeric',
+    hour:'numeric', minute:'numeric', hour12:false
   });
-  const parts = {};
-  for (const p of fmt.formatToParts(date)) {
-    if (p.type === 'year') parts.year = parseInt(p.value);
-    if (p.type === 'month') parts.month = parseInt(p.value);
-    if (p.type === 'day') parts.day = parseInt(p.value);
-    if (p.type === 'hour') parts.hour = parseInt(p.value) % 24;
-    if (p.type === 'minute') parts.minute = parseInt(p.value);
+  const o = {};
+  for (const p of f.formatToParts(date)) {
+    if (p.type==='day') o.d = +p.value;
+    if (p.type==='hour') o.h = (+p.value) % 24;
+    if (p.type==='minute') o.m = +p.value;
   }
-  return parts;
+  return o;
 }
 
-// ── Recalculate everything ──
+// ── Autocomplete ──
+function searchAirports(q) {
+  if (!q || q.length < 2) return [];
+  const u = q.toUpperCase();
+  const res = [];
+  for (const a of airports) {
+    if (res.length >= 10) break;
+    if (a.icao.startsWith(u) || a.name.toUpperCase().includes(u) || (a.city && a.city.toUpperCase().includes(u)))
+      res.push(a);
+  }
+  return res;
+}
+
+function setupAC(input, li, field) {
+  const wrap = input.parentElement;
+  let list = wrap.querySelector('.ac-list');
+  if (!list) { list = document.createElement('div'); list.className = 'ac-list'; wrap.appendChild(list); }
+  let si = -1;
+  input.addEventListener('input', () => {
+    const res = searchAirports(input.value.trim());
+    si = -1;
+    if (!res.length) { list.classList.remove('open'); return; }
+    list.innerHTML = res.map((a,i) =>
+      `<div class="ac-item" data-i="${i}"><span class="ac-icao">${a.icao}</span><span class="ac-name">${a.name}${a.city?' — '+a.city:''}</span></div>`
+    ).join('');
+    list.classList.add('open');
+    list.querySelectorAll('.ac-item').forEach(el => {
+      el.addEventListener('mousedown', e => { e.preventDefault(); pick(res[+el.dataset.i]); });
+    });
+  });
+  input.addEventListener('keydown', e => {
+    const items = list.querySelectorAll('.ac-item');
+    if (!list.classList.contains('open') || !items.length) return;
+    if (e.key==='ArrowDown') { e.preventDefault(); si = Math.min(si+1, items.length-1); hl(items); }
+    else if (e.key==='ArrowUp') { e.preventDefault(); si = Math.max(si-1, 0); hl(items); }
+    else if (e.key==='Enter' && si>=0) { e.preventDefault(); items[si].dispatchEvent(new MouseEvent('mousedown')); }
+    else if (e.key==='Escape') list.classList.remove('open');
+  });
+  input.addEventListener('blur', () => setTimeout(() => list.classList.remove('open'), 150));
+  function hl(items) { items.forEach((el,i) => el.classList.toggle('sel', i===si)); }
+  function pick(apt) { input.value = apt.icao; list.classList.remove('open'); legs[li][field] = apt.icao; recalc(); }
+}
+
+// ── Timezone picker ──
+function buildTZMenu() {
+  const menu = $('tzMenu');
+  menu.innerHTML = TIMEZONE_LIST.map(([tz, label]) =>
+    `<label><input type="checkbox" value="${tz}" ${extraTZ.includes(tz)?'checked':''}> ${label}</label>`
+  ).join('');
+  menu.querySelectorAll('input').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked && !extraTZ.includes(cb.value)) extraTZ.push(cb.value);
+      else extraTZ = extraTZ.filter(t => t !== cb.value);
+      renderTZChips();
+      recalc();
+    });
+  });
+}
+function renderTZChips() {
+  const bar = $('tzBar');
+  if (!extraTZ.length) { bar.innerHTML = ''; return; }
+  bar.innerHTML = '<span class="dim" style="font-size:0.72rem">Display:</span>' +
+    extraTZ.map(tz => {
+      const lbl = TIMEZONE_LIST.find(t=>t[0]===tz);
+      return `<span class="tz-chip">${lbl ? lbl[1] : tz.split('/').pop()} <button class="remove" data-tz="${tz}">✕</button></span>`;
+    }).join('');
+  bar.querySelectorAll('.remove').forEach(btn => {
+    btn.addEventListener('click', () => {
+      extraTZ = extraTZ.filter(t => t !== btn.dataset.tz);
+      renderTZChips(); buildTZMenu(); recalc();
+    });
+  });
+}
+$('tzBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  $('tzMenu').classList.toggle('open');
+});
+document.addEventListener('click', () => $('tzMenu').classList.remove('open'));
+$('tzMenu').addEventListener('click', e => e.stopPropagation());
+buildTZMenu();
+
+// ── Leg management ──
+function addLeg(dep, arr, ground, rest) {
+  const lastArr = legs.length > 0 ? legs[legs.length-1].arr : '';
+  legs.push({ dep: dep||lastArr, arr: arr||'', groundMin: ground ?? null, rest: rest||false, wind: null });
+  recalc();
+}
+function removeLeg(i) { legs.splice(i, 1); recalc(); }
+function moveLeg(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= legs.length) return;
+  [legs[i], legs[j]] = [legs[j], legs[i]];
+  recalc();
+}
+function toggleRest(i) {
+  legs[i].rest = !legs[i].rest;
+  // If enabling rest and ground time is less than 600 min, default to 600
+  if (legs[i].rest && (legs[i].groundMin == null || legs[i].groundMin < 600)) {
+    legs[i].groundMin = 600;
+  }
+  recalc();
+}
+
+// ── Winds aloft ──
+function altToPressure(ft) {
+  let best = ALT_PRESSURE[0];
+  for (const [a, p] of ALT_PRESSURE) {
+    if (Math.abs(ft - a) < Math.abs(ft - best[0])) best = [a, p];
+  }
+  return best[1];
+}
+
+async function fetchWinds() {
+  if (windsLoading) return;
+  const profile = getProfile();
+  const altFt = profile.alt * 100;
+  const hPa = altToPressure(altFt);
+  const btn = $('fetchWindsBtn');
+  btn.innerHTML = '<span class="spinner"></span>';
+  windsLoading = true;
+
+  try {
+    const fetches = legs.map(async (leg, i) => {
+      const dep = aptIdx[leg.dep], arr = aptIdx[leg.arr];
+      if (!dep || !arr) { leg.wind = null; return; }
+      const midLat = ((dep.lat + arr.lat) / 2).toFixed(2);
+      const midLon = ((dep.lon + arr.lon) / 2).toFixed(2);
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&hourly=wind_speed_${hPa}hPa,wind_direction_${hPa}hPa&wind_speed_unit=kn&forecast_days=2&timezone=UTC`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      const speeds = data.hourly[`wind_speed_${hPa}hPa`];
+      const dirs = data.hourly[`wind_direction_${hPa}hPa`];
+      const times = data.hourly.time;
+      // Pick the hour closest to departure time or current time
+      let targetHour = new Date().toISOString().slice(0,13) + ':00';
+      // If we have computed departure time, use that
+      const depTime = legDepartures[i];
+      if (depTime) targetHour = depTime.toISOString().slice(0,13) + ':00';
+      let bestIdx = 0;
+      for (let t = 0; t < times.length; t++) {
+        if (times[t] <= targetHour) bestIdx = t;
+      }
+      const windSpd = speeds[bestIdx];
+      const windDir = dirs[bestIdx];
+      const track = bearing(dep.lat, dep.lon, arr.lat, arr.lon);
+      const hw = windSpd * Math.cos(toRad(windDir - track));
+      leg.wind = { dir: Math.round(windDir), speed: Math.round(windSpd), headwind: Math.round(hw), hPa };
+    });
+    await Promise.all(fetches);
+  } catch (e) {
+    console.error('Wind fetch error:', e);
+  }
+  windsLoading = false;
+  btn.textContent = 'Winds';
+  recalc();
+}
+
+// Track departure times for wind matching (populated during recalc)
+let legDepartures = [];
+
+// ── Main recalc ──
 function recalc() {
   const profile = getProfile();
   const crewCount = getCrewCount();
-  const tbody = document.getElementById('legsBody');
+  const showMin = getShowMin();
+  const tbody = $('legsBody');
   tbody.innerHTML = '';
 
-  document.getElementById('emptyState').style.display = legs.length === 0 ? '' : 'none';
-  document.getElementById('summaryBar').style.display = legs.length > 0 ? 'flex' : 'none';
-  document.getElementById('crewSection').style.display = legs.length > 0 ? '' : 'none';
+  $('emptyState').style.display = legs.length ? 'none' : '';
+  $('summaryBar').style.display = legs.length ? 'flex' : 'none';
+  $('crewSection').style.display = legs.length ? '' : 'none';
 
-  // Get departure tz of first leg for start time interpretation
-  const firstDep = legs.length > 0 && legs[0].dep ? airportIndex[legs[0].dep] : null;
+  const firstDep = legs.length && legs[0].dep ? aptIdx[legs[0].dep] : null;
   const firstTz = firstDep ? firstDep.tz : 'UTC';
-  let currentTime = getStartTime(firstTz);
+  const startVal = $('startTime').value;
+  let currentTime = startVal && startVal.includes('T') ? dateInTz(startVal, firstTz) : null;
 
   let totalDist = 0, totalFlightMin = 0, totalBlockMin = 0;
-  const legData = []; // computed per-leg data for crew rest
+  const legCalc = [];
+  legDepartures = [];
+
+  // Track duty periods (reset by rest stops)
+  let dutyStartTime = null; // set at show time before first leg or after rest
+  let needsShowRow = true;  // insert show row before next leg
 
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i];
-    const depApt = airportIndex[leg.dep];
-    const arrApt = airportIndex[leg.arr];
-    const depTz = depApt ? depApt.tz : null;
-    const arrTz = arrApt ? arrApt.tz : null;
+    const depApt = aptIdx[leg.dep], arrApt = aptIdx[leg.arr];
+    const depTz = depApt?.tz, arrTz = arrApt?.tz;
 
     // Distance
-    let distNm = null;
-    if (depApt && arrApt) {
-      distNm = haversineNm(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon);
+    let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
+
+    // Wind-adjusted speed
+    let gs = profile.speed;
+    if (leg.wind) gs = Math.max(50, profile.speed - leg.wind.headwind); // headwind positive = slower
+
+    // Flight time
+    let flightMin = (distNm != null && gs > 0) ? (distNm / gs) * 60 : null;
+    let blockMin = (flightMin != null) ? profile.startup + flightMin + profile.shutdown : null;
+
+    // Show time row (before first leg and after rest stops)
+    if (needsShowRow && currentTime && showMin > 0) {
+      // Duty starts showMin before departure
+      const showStart = new Date(currentTime.getTime());
+      dutyStartTime = showStart;
+      const showTz = depTz || firstTz;
+      const str = document.createElement('tr');
+      str.className = 'show-row';
+      str.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin}min before departure</td>
+        <td>${fmtTimeCell(showStart, showTz)}</td><td></td><td></td>`;
+      tbody.appendChild(str);
+      // Advance show time into departure: current time already is at departure (show time is before)
+      // Actually we need: show time = departure - showMin, so duty starts earlier
+      // But currentTime is departure time, so showStart = currentTime - showMin
+      dutyStartTime = new Date(currentTime.getTime() - showMin * 60000);
+      // Update the show row with correct time
+      str.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin} min before departure</td>
+        <td>${fmtTimeCell(dutyStartTime, showTz)}</td><td></td><td></td>`;
+      needsShowRow = false;
     }
 
-    // Flight time (minutes)
-    let flightMin = null;
-    if (distNm !== null && profile.speed > 0) {
-      flightMin = (distNm / profile.speed) * 60;
-    }
-
-    // Block time
-    let blockMin = null;
-    if (flightMin !== null) {
-      blockMin = profile.startup + flightMin + profile.shutdown;
-    }
-
-    // Times
+    // Departure/arrival times
     let departTime = null, arriveTime = null;
-    if (currentTime && blockMin !== null) {
+    if (currentTime && blockMin != null) {
       departTime = new Date(currentTime.getTime());
       arriveTime = new Date(currentTime.getTime() + blockMin * 60000);
     }
+    legDepartures[i] = departTime;
 
-    if (distNm !== null) totalDist += distNm;
-    if (flightMin !== null) totalFlightMin += flightMin;
-    if (blockMin !== null) totalBlockMin += blockMin;
+    if (distNm != null) totalDist += distNm;
+    if (flightMin != null) totalFlightMin += flightMin;
+    if (blockMin != null) totalBlockMin += blockMin;
 
-    const depFmt = departTime && depTz ? formatTime(departTime, depTz) : { local: '—', zulu: '', dateStr: '' };
-    const arrFmt = arriveTime && arrTz ? formatTime(arriveTime, arrTz) : { local: '—', zulu: '', dateStr: '' };
+    // Wind display
+    let windHtml = '';
+    if (leg.wind) {
+      const hw = leg.wind.headwind;
+      if (Math.abs(hw) < 3) windHtml = `<div class="wind-info wind-calm">${leg.wind.dir}°/${leg.wind.speed}kt calm</div>`;
+      else if (hw > 0) windHtml = `<div class="wind-info wind-head">${leg.wind.dir}°/${leg.wind.speed}kt ▼${hw}kt head</div>`;
+      else windHtml = `<div class="wind-info wind-tail">${leg.wind.dir}°/${leg.wind.speed}kt ▲${Math.abs(hw)}kt tail</div>`;
+      windHtml += `<div class="wind-info dim">GS ${Math.round(gs)} kts</div>`;
+    }
 
-    // Timezone abbreviations
-    const depTzAbbr = departTime && depTz ? tzAbbrev(departTime, depTz) : '';
-    const arrTzAbbr = arriveTime && arrTz ? tzAbbrev(arriveTime, arrTz) : '';
-
-    // Build row
+    // Build leg row
     const tr = document.createElement('tr');
     tr.className = 'leg-row';
     tr.innerHTML = `
-      <td>${i + 1}</td>
-      <td><div class="icao-wrapper"><input class="icao-input" value="${esc(leg.dep)}" data-leg="${i}" data-field="dep" placeholder="ICAO" spellcheck="false"></div></td>
+      <td>${i+1}</td>
+      <td><div class="icao-wrapper"><input class="icao-input" value="${esc(leg.dep)}" data-l="${i}" data-f="dep" placeholder="ICAO" spellcheck="false"></div></td>
       <td class="arrow">→</td>
-      <td><div class="icao-wrapper"><input class="icao-input" value="${esc(leg.arr)}" data-leg="${i}" data-field="arr" placeholder="ICAO" spellcheck="false"></div></td>
-      <td class="mono">${distNm !== null ? Math.round(distNm).toLocaleString() : '—'}</td>
-      <td class="mono">${formatDuration(flightMin)}</td>
-      <td class="mono">${formatDuration(blockMin)}</td>
-      <td>${depFmt.local !== '—' ? `<span class="mono">${depFmt.local}</span> <span class="zulu">${depTzAbbr}</span><br><span class="zulu">${depFmt.zulu}</span>${depFmt.dateStr ? ` <span class="date-label">${depFmt.dateStr}</span>` : ''}` : '—'}</td>
-      <td>${arrFmt.local !== '—' ? `<span class="mono">${arrFmt.local}</span> <span class="zulu">${arrTzAbbr}</span><br><span class="zulu">${arrFmt.zulu}</span>${arrFmt.dateStr ? ` <span class="date-label">${arrFmt.dateStr}</span>` : ''}` : '—'}</td>
+      <td><div class="icao-wrapper"><input class="icao-input" value="${esc(leg.arr)}" data-l="${i}" data-f="arr" placeholder="ICAO" spellcheck="false"></div></td>
+      <td class="mono">${distNm!=null ? Math.round(distNm).toLocaleString() : '—'}</td>
+      <td class="mono">${fmtDur(flightMin)}${windHtml}</td>
+      <td class="mono">${fmtDur(blockMin)}</td>
+      <td>${fmtTimeCell(departTime, depTz)}</td>
+      <td>${fmtTimeCell(arriveTime, arrTz)}</td>
       <td>
-        <div class="leg-controls">
-          <button onclick="moveLeg(${i},-1)" title="Move up">▲</button>
-          <button onclick="moveLeg(${i},1)" title="Move down">▼</button>
-          <button onclick="removeLeg(${i})" title="Delete leg" style="color:#ef4444">✕</button>
+        <div style="display:flex;gap:2px">
+          <button class="btn-icon" onclick="moveLeg(${i},-1)" title="Move up">▲</button>
+          <button class="btn-icon" onclick="moveLeg(${i},1)" title="Move down">▼</button>
+          <button class="btn-icon" onclick="removeLeg(${i})" title="Delete" style="color:#ef4444">✕</button>
         </div>
-      </td>
-    `;
+      </td>`;
     tbody.appendChild(tr);
 
-    // Setup autocomplete on the inputs
-    const inputs = tr.querySelectorAll('.icao-input');
-    inputs.forEach(inp => {
-      const li = parseInt(inp.dataset.leg);
-      const f = inp.dataset.field;
-      setupAutocomplete(inp, li, f);
-      inp.addEventListener('change', () => { legs[li][f] = inp.value.toUpperCase().trim(); recalc(); });
+    // Setup autocomplete
+    tr.querySelectorAll('.icao-input').forEach(inp => {
+      const li = +inp.dataset.l, f = inp.dataset.f;
+      setupAC(inp, li, f);
       inp.addEventListener('blur', () => { inp.value = inp.value.toUpperCase().trim(); legs[li][f] = inp.value; recalc(); });
     });
 
-    // Save computed data
-    legData.push({ distNm, flightMin, blockMin, departTime, arriveTime, depTz, arrTz });
+    legCalc.push({ distNm, flightMin, blockMin, departTime, arriveTime, depTz, arrTz });
 
-    // Ground time row (between legs, not after last)
+    // Ground/rest row between legs
     if (i < legs.length - 1) {
-      const defaultGround = profile.startup + profile.shutdown;
-      const groundMin = leg.groundMin ?? defaultGround;
+      const defaultGround = leg.rest ? 600 : (profile.startup + profile.shutdown);
+      const gMin = leg.groundMin ?? defaultGround;
+
       const gtr = document.createElement('tr');
       gtr.className = 'ground-row';
-      gtr.innerHTML = `
-        <td></td>
-        <td colspan="6" style="padding-left:2rem">
-          ⏱ Ground time at <strong>${esc(legs[i].arr || '?')}</strong>:
-          <input class="ground-input" type="number" min="0" max="999" value="${groundMin}" data-leg="${i}"> min
-          <span class="zulu">(default: ${defaultGround}m)</span>
-        </td>
-        <td colspan="3"></td>
-      `;
+
+      let restLabel = '';
+      if (leg.rest) {
+        const hrs = Math.floor(gMin/60), mins = gMin%60;
+        restLabel = `<span style="color:#818cf8">🛏 Crew rest at <strong>${esc(leg.arr||'?')}</strong>:</span>`;
+        if (gMin < 600) restLabel += ` <span class="rest-warn">⚠ Below 10h minimum</span>`;
+      } else {
+        restLabel = `⏱ Ground at <strong>${esc(leg.arr||'?')}</strong>:`;
+      }
+
+      gtr.innerHTML = `<td></td>
+        <td colspan="6" style="padding-left:1.5rem">
+          ${restLabel}
+          <input class="ground-input" type="number" min="0" max="9999" value="${gMin}" data-l="${i}"> min
+          <span class="dim">(${Math.floor(gMin/60)}h ${(gMin%60).toString().padStart(2,'0')}m)</span>
+          <button class="rest-toggle ${leg.rest?'active':''}" onclick="toggleRest(${i})">${leg.rest ? '🛏 Rest' : '+ Rest'}</button>
+        </td><td colspan="3"></td>`;
       tbody.appendChild(gtr);
-      const gi = gtr.querySelector('.ground-input');
-      gi.addEventListener('change', () => { legs[i].groundMin = parseInt(gi.value, 10) || 0; recalc(); });
+
+      gtr.querySelector('.ground-input').addEventListener('change', function() {
+        legs[i].groundMin = parseInt(this.value,10) || 0;
+        recalc();
+      });
 
       // Advance clock
       if (arriveTime) {
-        currentTime = new Date(arriveTime.getTime() + groundMin * 60000);
+        currentTime = new Date(arriveTime.getTime() + gMin * 60000);
       }
+
+      // If this was a rest stop, next leg gets a show row
+      if (leg.rest) needsShowRow = true;
     } else {
-      // Last leg: no ground row, clock ends at arrival
       if (arriveTime) currentTime = arriveTime;
     }
   }
 
   // Summary
-  const firstDepart = legData.length > 0 ? legData[0].departTime : null;
-  const lastArrive = legData.length > 0 ? legData[legData.length - 1].arriveTime : null;
-  const totalElapsedMin = (firstDepart && lastArrive) ? (lastArrive - firstDepart) / 60000 : null;
+  const firstDepart = legCalc[0]?.departTime;
+  const lastArrive = legCalc[legCalc.length-1]?.arriveTime;
+  const elapsed = (firstDepart && lastArrive) ? (lastArrive - firstDepart)/60000 : null;
 
-  document.getElementById('totalDist').textContent = totalDist > 0 ? Math.round(totalDist).toLocaleString() + ' nm' : '—';
-  document.getElementById('totalFlight').textContent = totalFlightMin > 0 ? formatDuration(totalFlightMin) : '—';
-  document.getElementById('totalBlock').textContent = totalBlockMin > 0 ? formatDuration(totalBlockMin) : '—';
-  document.getElementById('totalTime').textContent = totalElapsedMin ? formatDuration(totalElapsedMin) : '—';
-  document.getElementById('totalLegs').textContent = legs.length;
+  $('sDist').textContent = totalDist > 0 ? Math.round(totalDist).toLocaleString() + ' nm' : '—';
+  $('sFlight').textContent = totalFlightMin > 0 ? fmtDur(totalFlightMin) : '—';
+  $('sBlock').textContent = totalBlockMin > 0 ? fmtDur(totalBlockMin) : '—';
+  $('sElapsed').textContent = elapsed ? fmtDur(elapsed) : '—';
+  $('sLegs').textContent = legs.length;
 
-  // ── Crew rest / duty ──
-  updateCrewTracker(legData, crewCount, profile);
+  // Crew duty tracker
+  updateCrew(legCalc, crewCount, getShowMin());
 }
 
-function updateCrewTracker(legData, crewCount, profile) {
-  const tbody = document.getElementById('crewBody');
-  const alertsDiv = document.getElementById('crewAlerts');
-  tbody.innerHTML = '';
-  alertsDiv.innerHTML = '';
+// ── Crew duty/rest tracker ──
+function updateCrew(legCalc, crewCount, showMin) {
+  const tbody = $('crewBody'), alerts = $('crewAlerts');
+  tbody.innerHTML = ''; alerts.innerHTML = '';
+  if (!legCalc.length) return;
 
-  if (legData.length === 0) return;
+  const maxFlight = (crewCount >= 2 ? 10 : 8) * 60;
+  const maxDuty = 14 * 60;
+  const minRest = 10 * 60;
 
-  const maxFlight = crewCount >= 2 ? 10 * 60 : 8 * 60; // minutes
-  const maxDuty = 14 * 60; // minutes
-  const minRest = 10 * 60; // minutes
-
-  // Duty starts at first leg departure, running total of flight time in trailing 24h
-  const firstDepart = legData[0].departTime;
+  // Find duty period starts (first departure and after each rest stop)
+  // Duty starts at show time before first departure of each duty period
+  let dutyStart = null;
+  const firstDepart = legCalc[0]?.departTime;
   if (!firstDepart) return;
+  dutyStart = new Date(firstDepart.getTime() - showMin * 60000);
 
-  const alerts = [];
+  const alertList = [];
 
-  for (let i = 0; i < legData.length; i++) {
-    const ld = legData[i];
-    if (!ld.arriveTime || !ld.flightMin) continue;
+  for (let i = 0; i < legCalc.length; i++) {
+    const lc = legCalc[i];
+    if (!lc.arriveTime || lc.flightMin == null) continue;
 
-    // Cumulative flight time in trailing 24h from this leg's arrival
-    let flight24h = 0;
+    // Cumulative flight in trailing 24h
+    let flight24 = 0;
     for (let j = 0; j <= i; j++) {
-      if (!legData[j].departTime || !legData[j].flightMin) continue;
-      const hoursAgo = (ld.arriveTime - legData[j].departTime) / 3600000;
-      if (hoursAgo <= 24) flight24h += legData[j].flightMin;
+      if (!legCalc[j].departTime || legCalc[j].flightMin == null) continue;
+      if ((lc.arriveTime - legCalc[j].departTime) / 3600000 <= 24)
+        flight24 += legCalc[j].flightMin;
     }
 
-    // Duty time: first departure to this arrival
-    const dutyMin = (ld.arriveTime - firstDepart) / 60000;
+    // Duty time from duty start to this arrival
+    const dutyMin = (lc.arriveTime - dutyStart) / 60000;
 
-    // Status
-    const flightRemain = maxFlight - flight24h;
-    const dutyRemain = maxDuty - dutyMin;
-    const worstRemain = Math.min(flightRemain, dutyRemain);
+    const flightRem = maxFlight - flight24;
+    const dutyRem = maxDuty - dutyMin;
+    const worst = Math.min(flightRem, dutyRem);
 
-    let statusClass, statusText;
-    if (worstRemain <= 0) {
-      statusClass = 'status-red';
-      statusText = 'EXCEEDED';
-    } else if (worstRemain <= 60) {
-      statusClass = 'status-yellow';
-      statusText = `${Math.round(worstRemain)}m remaining`;
-    } else {
-      statusClass = 'status-green';
-      statusText = 'OK';
-    }
+    let cls, txt;
+    if (worst <= 0) { cls = 'status-bad'; txt = 'EXCEEDED'; }
+    else if (worst <= 60) { cls = 'status-warn'; txt = `${Math.round(worst)}m remaining`; }
+    else { cls = 'status-ok'; txt = 'OK'; }
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>Leg ${i + 1} (${esc(legs[i].dep)} → ${esc(legs[i].arr)})</td>
-      <td class="mono">${formatDuration(flight24h)} / ${formatDuration(maxFlight)}</td>
-      <td class="mono">${formatDuration(dutyMin)} / ${formatDuration(maxDuty)}</td>
-      <td class="${statusClass}">${statusText}</td>
-    `;
+      <td>Leg ${i+1} (${esc(legs[i].dep)} → ${esc(legs[i].arr)})</td>
+      <td class="mono">${fmtDur(flight24)} / ${fmtDur(maxFlight)}</td>
+      <td class="mono">${fmtDur(dutyMin)} / ${fmtDur(maxDuty)}</td>
+      <td class="${cls}">${txt}</td>`;
     tbody.appendChild(tr);
 
-    // Generate alerts
-    if (flightRemain <= 0) {
-      const overBy = Math.abs(flightRemain);
-      alerts.push({ leg: i + 1, critical: true, msg: `Leg ${i + 1} exceeds flight time limit by ${formatDuration(overBy)}. Crew rest required before this leg. Minimum rest stop: ${formatDuration(minRest)}.` });
-    } else if (dutyRemain <= 0) {
-      const overBy = Math.abs(dutyRemain);
-      alerts.push({ leg: i + 1, critical: true, msg: `Leg ${i + 1} exceeds duty time limit by ${formatDuration(overBy)}. Crew rest required before this leg. Minimum rest stop: ${formatDuration(minRest)}.` });
-    } else if (worstRemain <= 60) {
-      if (flightRemain <= 60) {
-        alerts.push({ leg: i + 1, critical: false, msg: `After leg ${i + 1}: only ${Math.round(flightRemain)}m of flight time remaining in 24h window. Consider scheduling rest.` });
-      }
-      if (dutyRemain <= 60) {
-        alerts.push({ leg: i + 1, critical: false, msg: `After leg ${i + 1}: only ${Math.round(dutyRemain)}m of duty time remaining. Consider scheduling rest.` });
-      }
+    // Alerts
+    if (flightRem <= 0)
+      alertList.push({ crit:true, msg:`Leg ${i+1} exceeds flight time limit by ${fmtDur(Math.abs(flightRem))}. Minimum rest: ${fmtDur(minRest)}.` });
+    else if (dutyRem <= 0)
+      alertList.push({ crit:true, msg:`Leg ${i+1} exceeds duty limit by ${fmtDur(Math.abs(dutyRem))}. Minimum rest: ${fmtDur(minRest)}.` });
+    else if (worst <= 60) {
+      if (flightRem <= 60) alertList.push({ crit:false, msg:`After leg ${i+1}: ${Math.round(flightRem)}m flight time remaining.` });
+      if (dutyRem <= 60) alertList.push({ crit:false, msg:`After leg ${i+1}: ${Math.round(dutyRem)}m duty time remaining.` });
+    }
+
+    // If there's a rest stop after this leg, reset duty clock for next leg
+    if (i < legs.length - 1 && legs[i].rest && legCalc[i+1]?.departTime) {
+      dutyStart = new Date(legCalc[i+1].departTime.getTime() - showMin * 60000);
     }
   }
 
-  for (const a of alerts) {
+  for (const a of alertList) {
     const div = document.createElement('div');
-    div.className = 'rest-suggestion' + (a.critical ? ' critical' : '');
+    div.className = 'alert-box' + (a.crit ? ' critical' : '');
     div.textContent = a.msg;
-    alertsDiv.appendChild(div);
+    alerts.appendChild(div);
   }
 }
 
-function esc(s) { return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
-// ── Settings change handlers ──
-document.getElementById('aircraft').addEventListener('change', () => {
-  // Clear overrides when switching aircraft
-  document.getElementById('profileSpeed').value = '';
-  document.getElementById('profileStartup').value = '';
-  document.getElementById('profileShutdown').value = '';
-  updatePlaceholders();
-  recalc();
+// ── Settings handlers ──
+$('aircraft').addEventListener('change', () => {
+  $('pSpeed').value = ''; $('pStartup').value = ''; $('pShutdown').value = ''; $('pAlt').value = '';
+  updatePlaceholders(); recalc();
 });
-document.getElementById('profileSpeed').addEventListener('change', recalc);
-document.getElementById('profileStartup').addEventListener('change', recalc);
-document.getElementById('profileShutdown').addEventListener('change', recalc);
-document.getElementById('crew').addEventListener('change', recalc);
-document.getElementById('startTime').addEventListener('change', recalc);
+for (const id of ['pSpeed','pStartup','pShutdown','pAlt','crew','startTime','showTime'])
+  $(id).addEventListener('change', recalc);
 updatePlaceholders();
+
+// Default start time: next 15min
+(function() {
+  if ($('startTime').value) return;
+  const now = new Date();
+  now.setMinutes(Math.ceil(now.getMinutes()/15)*15, 0, 0);
+  const p = n => n.toString().padStart(2,'0');
+  $('startTime').value = `${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}T${p(now.getHours())}:${p(now.getMinutes())}`;
+})();
 
 // ── URL sharing ──
 function buildURL() {
-  const params = new URLSearchParams();
-  const type = document.getElementById('aircraft').value;
-  params.set('a', type);
-  // Speed/startup/shutdown overrides
-  const os = document.getElementById('profileSpeed').value;
-  const osu = document.getElementById('profileStartup').value;
-  const osd = document.getElementById('profileShutdown').value;
-  if (os) params.set('os', os);
-  if (osu) params.set('osu', osu);
-  if (osd) params.set('osd', osd);
-
-  params.set('c', getCrewCount());
-  const t = document.getElementById('startTime').value;
-  if (t) params.set('t', t);
-  if (legs.length > 0) {
-    params.set('l', legs.map(l => `${l.dep}-${l.arr}`).join(','));
-    const grounds = legs.slice(0, -1).map(l => l.groundMin ?? '');
-    if (grounds.some(g => g !== '')) params.set('g', grounds.join(','));
+  const p = new URLSearchParams();
+  p.set('a', $('aircraft').value);
+  const os = $('pSpeed').value, osu = $('pStartup').value, osd = $('pShutdown').value, ofl = $('pAlt').value;
+  if (os) p.set('os', os);
+  if (osu) p.set('osu', osu);
+  if (osd) p.set('osd', osd);
+  if (ofl) p.set('fl', ofl);
+  p.set('c', getCrewCount());
+  const sm = $('showTime').value;
+  if (sm && sm !== '60') p.set('sh', sm);
+  const t = $('startTime').value;
+  if (t) p.set('t', t);
+  if (legs.length) {
+    p.set('l', legs.map(l => `${l.dep}-${l.arr}`).join(','));
+    const grounds = legs.slice(0,-1).map(l => l.groundMin ?? '');
+    if (grounds.some(g => g !== '')) p.set('g', grounds.join(','));
+    const rests = legs.slice(0,-1).map(l => l.rest ? '1' : '');
+    if (rests.some(r => r)) p.set('r', rests.join(','));
   }
-  return window.location.origin + window.location.pathname + '?' + params.toString();
+  if (extraTZ.length) p.set('tz', extraTZ.join(','));
+  return location.origin + location.pathname + '?' + p.toString();
 }
 
 function shareURL() {
   const url = buildURL();
   navigator.clipboard.writeText(url).then(() => {
-    const toast = document.getElementById('toast');
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 2000);
-  }).catch(() => {
-    // Fallback
-    prompt('Copy this URL:', url);
-  });
-  // Also update browser URL without reload
+    $('toast').classList.add('show');
+    setTimeout(() => $('toast').classList.remove('show'), 2000);
+  }).catch(() => prompt('Copy URL:', url));
   history.replaceState(null, '', '?' + new URL(url).search.slice(1));
 }
 
-function parseURLState() {
-  const params = new URLSearchParams(window.location.search);
-  if (!params.has('a') && !params.has('l')) return;
-
-  // Aircraft
-  const a = params.get('a') || 'G550';
-  document.getElementById('aircraft').value = a;
+function parseURL() {
+  const p = new URLSearchParams(location.search);
+  if (!p.has('a') && !p.has('l')) return;
+  $('aircraft').value = p.get('a') || 'G550';
   updatePlaceholders();
-
-  // Overrides
-  if (params.has('os')) document.getElementById('profileSpeed').value = params.get('os');
-  if (params.has('osu')) document.getElementById('profileStartup').value = params.get('osu');
-  if (params.has('osd')) document.getElementById('profileShutdown').value = params.get('osd');
-
-  // Crew
-  if (params.has('c')) document.getElementById('crew').value = params.get('c');
-
-  // Start time
-  if (params.has('t')) document.getElementById('startTime').value = params.get('t');
-
-  // Legs
-  if (params.has('l')) {
-    const legPairs = params.get('l').split(',');
-    const grounds = params.has('g') ? params.get('g').split(',') : [];
-    legs = legPairs.map((pair, i) => {
+  if (p.has('os')) $('pSpeed').value = p.get('os');
+  if (p.has('osu')) $('pStartup').value = p.get('osu');
+  if (p.has('osd')) $('pShutdown').value = p.get('osd');
+  if (p.has('fl')) $('pAlt').value = p.get('fl');
+  if (p.has('c')) $('crew').value = p.get('c');
+  if (p.has('sh')) $('showTime').value = p.get('sh');
+  if (p.has('t')) $('startTime').value = p.get('t');
+  if (p.has('tz')) {
+    extraTZ = p.get('tz').split(',').filter(Boolean);
+    renderTZChips(); buildTZMenu();
+  }
+  if (p.has('l')) {
+    const pairs = p.get('l').split(',');
+    const grounds = p.has('g') ? p.get('g').split(',') : [];
+    const rests = p.has('r') ? p.get('r').split(',') : [];
+    legs = pairs.map((pair, i) => {
       const [dep, arr] = pair.split('-');
-      return { dep: dep || '', arr: arr || '', groundMin: grounds[i] !== undefined && grounds[i] !== '' ? parseInt(grounds[i], 10) : null };
+      return {
+        dep: dep||'', arr: arr||'',
+        groundMin: (grounds[i] != null && grounds[i] !== '') ? +grounds[i] : null,
+        rest: rests[i] === '1',
+        wind: null,
+      };
     });
   }
 }
-
-// Default start time: now, rounded to next 15min
-function setDefaultStartTime() {
-  if (document.getElementById('startTime').value) return;
-  const now = new Date();
-  now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
-  const pad = n => n.toString().padStart(2, '0');
-  document.getElementById('startTime').value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
-}
-setDefaultStartTime();
 </script>
 </body>
 </html>
