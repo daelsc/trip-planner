@@ -247,8 +247,33 @@ async function loadAndRender() {
     }
   }
 
+  // Build title with date range
+  const firstDept = computed[0]?.departTime;
+  const lastArr = computed[computed.length-1]?.arriveTime;
+  const firstDepTz = computed[0]?.depTz || 'UTC';
+  const lastArrTz = computed[computed.length-1]?.arrTz || 'UTC';
+  let titleDate = '';
+  if (firstDept) {
+    const startMonth = firstDept.toLocaleString('en-US', { timeZone: firstDepTz, month:'long' });
+    const startDay = firstDept.toLocaleString('en-US', { timeZone: firstDepTz, day:'numeric' });
+    if (lastArr) {
+      const endMonth = lastArr.toLocaleString('en-US', { timeZone: lastArrTz, month:'long' });
+      const endDay = lastArr.toLocaleString('en-US', { timeZone: lastArrTz, day:'numeric' });
+      if (startMonth === endMonth && startDay === endDay) {
+        titleDate = `${startMonth} ${startDay}`;
+      } else if (startMonth === endMonth) {
+        titleDate = `${startMonth} ${startDay} - ${endDay}`;
+      } else {
+        titleDate = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
+      }
+    } else {
+      titleDate = `${startMonth} ${startDay}`;
+    }
+  }
+
   // Render
-  let html = `<h1>${esc(trip.name)}</h1>`;
+  const heading = 'N785QS' + (titleDate ? ' ' + titleDate : '') + ' Itinerary';
+  let html = `<h1>${esc(heading)}</h1>`;
   html += `<div class="trip-meta">${esc(trip.route)}</div>`;
 
   for (let i = 0; i < computed.length; i++) {
@@ -317,7 +342,7 @@ async function loadAndRender() {
   }
 
   document.getElementById('content').innerHTML = html;
-  document.title = `${trip.name} — Trip Itinerary`;
+  document.title = heading;
 }
 
 // Initial load
