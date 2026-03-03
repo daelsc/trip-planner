@@ -67,7 +67,6 @@ button:hover { background: #2563eb; }
 .ac-name { color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .icao-city { font-size: 0.68rem; color: #94a3b8; margin-top: 1px; white-space: nowrap; }
-.icao-tz { font-size: 0.68rem; color: #64748b; margin-top: 1px; white-space: nowrap; }
 .arrow { color: #3b82f6; font-weight: bold; }
 .mono { font-family: 'SF Mono', 'Fira Code', monospace; }
 .dim { color: #64748b; font-size: 0.78rem; }
@@ -455,12 +454,6 @@ function timeToDate(timeStr, refDate, tz) {
   return dt;
 }
 
-function fmtTzShort(tz) {
-  try {
-    const now = new Date();
-    return now.toLocaleString('en-US', { timeZone: tz, timeZoneName: 'short' }).split(' ').pop();
-  } catch { return tz.split('/').pop(); }
-}
 
 // Parse "YYYY-MM-DDTHH:MM" as wall-clock in given tz → UTC Date
 function dateInTz(dtStr, tz) {
@@ -760,8 +753,6 @@ function recalc() {
     }
 
     // Timezone labels and city/state
-    const depTzLabel = depApt ? fmtTzShort(depApt.tz) : '';
-    const arrTzLabel = arrApt ? fmtTzShort(arrApt.tz) : '';
     const depCity = depApt ? (depApt.city + (depApt.state ? ', ' + depApt.state : '')) : '';
     const arrCity = arrApt ? (arrApt.city + (arrApt.state ? ', ' + arrApt.state : '')) : '';
 
@@ -805,7 +796,7 @@ function recalc() {
     depCellHtml += `<input class="date-input" type="date" value="${esc(curDepDate)}" data-dep-l="${curDepIndex}" data-dep-f="date">`;
     depCellHtml += ` <input class="dep-override" type="text" value="${esc(curDepTime)}" data-dep-l="${curDepIndex}" data-dep-f="time" placeholder="HH:MM" maxlength="5">`;
     depCellHtml += `</div>`;
-    if (depTzLabel) depCellHtml += `<div class="icao-tz">${depTzLabel}</div>`;
+    // timezone already shown in depart/arrive columns
     if (depInvalid) depCellHtml += '<div class="validation-warn">Unknown</div>';
     if (curGroundInvalid) depCellHtml += `<div class="validation-warn">⚠ ${curGroundWarnMsg}</div>`;
 
@@ -816,8 +807,8 @@ function recalc() {
       <td>${i+1}</td>
       <td>${depCellHtml}</td>
       <td class="arrow">→</td>
-      <td><div class="icao-wrapper"><input class="icao-input${arrInvalid ? ' invalid' : ''}" value="${esc(leg.arr)}" data-l="${i}" data-f="arr" placeholder="ICAO" spellcheck="false"></div>${arrCity ? `<div class="icao-city">${esc(arrCity)}</div>` : ''}${arrRwy}${arrTzLabel ? `<div class="icao-tz">${arrTzLabel}</div>` : ''}${arrInvalid ? '<div class="validation-warn">Unknown</div>' : ''}${sameApt ? '<div class="validation-warn">Same as departure</div>' : ''}</td>
-      <td class="mono">${distNm!=null ? Math.round(distNm).toLocaleString() : '—'}</td>
+      <td><div class="icao-wrapper"><input class="icao-input${arrInvalid ? ' invalid' : ''}" value="${esc(leg.arr)}" data-l="${i}" data-f="arr" placeholder="ICAO" spellcheck="false"></div>${arrCity ? `<div class="icao-city">${esc(arrCity)}</div>` : ''}${arrRwy}${arrInvalid ? '<div class="validation-warn">Unknown</div>' : ''}${sameApt ? '<div class="validation-warn">Same as departure</div>' : ''}</td>
+      <td class="mono">${distNm!=null ? Math.round(distNm).toLocaleString() + ' nm' : '—'}</td>
       <td class="mono">${fmtDur(flightMin)}${windHtml}</td>
       <td class="mono">${fmtDur(blockMin)}</td>
       <td>${fmtTimeCell(departTime, depTz)}</td>
