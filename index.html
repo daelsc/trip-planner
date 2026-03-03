@@ -150,6 +150,21 @@ button:hover { background: #2563eb; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Home screen */
+.home-screen { max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+.home-screen h1 { font-size: 1.4rem; margin-bottom: 1.25rem; }
+.home-trips { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; }
+.home-trip { display: flex; justify-content: space-between; align-items: center; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 0.65rem 0.85rem; cursor: pointer; transition: border-color 0.15s; }
+.home-trip:hover { border-color: #3b82f6; }
+.home-trip .ht-num { color: #818cf8; font-weight: 600; font-size: 0.9rem; margin-right: 0.6rem; white-space: nowrap; }
+.home-trip .ht-name { color: #e2e8f0; font-weight: 500; font-size: 0.88rem; }
+.home-trip .ht-route { color: #64748b; font-size: 0.75rem; margin-top: 0.15rem; }
+.home-trip .ht-delete { color: #475569; cursor: pointer; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.78rem; flex-shrink: 0; }
+.home-trip .ht-delete:hover { color: #ef4444; background: #0f172a; }
+.home-new { display: inline-block; padding: 0.5rem 1.25rem; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 0.88rem; cursor: pointer; font-weight: 500; }
+.home-new:hover { background: #2563eb; }
+.home-empty { color: #475569; font-size: 0.88rem; margin-bottom: 1rem; }
+
 @media (max-width: 900px) {
   .settings-bar { gap: 0.4rem; }
   .leg-table { font-size: 0.75rem; }
@@ -159,6 +174,15 @@ button:hover { background: #2563eb; }
 </head>
 <body>
 
+<!-- Home screen -->
+<div id="homeScreen" class="home-screen">
+  <h1>Trip Planner</h1>
+  <div id="homeTrips" class="home-trips"></div>
+  <button class="home-new" onclick="startNewTrip()">+ New Trip</button>
+</div>
+
+<!-- Planner (hidden until trip selected) -->
+<div id="plannerView" style="display:none">
 <div class="settings-bar">
   <h1>Trip Planner</h1>
   <div class="sg">
@@ -201,6 +225,7 @@ button:hover { background: #2563eb; }
     <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
     <div class="trips-menu" id="tripsMenu"></div>
   </div>
+  <button class="btn-secondary btn-sm" onclick="goHome()">Home</button>
 </div>
 
 <div class="tz-bar" id="tzBar"></div>
@@ -260,6 +285,7 @@ button:hover { background: #2563eb; }
     <div id="crewAlerts"></div>
   </div>
 </div>
+</div><!-- /plannerView -->
 
 <div class="toast" id="toast">URL copied to clipboard</div>
 <div class="save-overlay" id="saveOverlay">
@@ -313,13 +339,11 @@ let extraTZ = [];        // IANA timezone strings
 let windsLoading = false;
 
 // ── Load airports ──
-fetch('airports.json').then(r=>r.json()).then(data => {
+let airportsReady = false;
+const airportsPromise = fetch('airports.json').then(r=>r.json()).then(data => {
   airports = data;
   for (const a of airports) aptIdx[a.icao] = a;
-  parseURL();
-  recalc();
-  // Auto-fetch winds if we have legs
-  if (legs.length && legs.some(l => l.dep && l.arr)) fetchWinds();
+  airportsReady = true;
 }).catch(() => {
   document.getElementById('emptyState').innerHTML =
     '<p style="color:#ef4444">Failed to load airport data. Serve via HTTP, not file://.</p>' +
@@ -1286,6 +1310,108 @@ function parseURL() {
     });
   }
 }
+
+// ── Home screen ──
+function showHome() {
+  $('homeScreen').style.display = '';
+  $('plannerView').style.display = 'none';
+  history.replaceState(null, '', location.pathname);
+  loadHomeTrips();
+}
+
+function showPlanner() {
+  $('homeScreen').style.display = 'none';
+  $('plannerView').style.display = '';
+}
+
+function goHome() {
+  showHome();
+}
+
+function startNewTrip() {
+  // Reset state
+  legs = [];
+  currentTripId = null;
+  extraTZ = []; tzUserRemoved.clear();
+  $('aircraft').value = 'G550';
+  $('pSpeed').value = ''; $('pStartup').value = ''; $('pShutdown').value = ''; $('pAlt').value = ''; $('showTime').value = '';
+  $('startTime').value = '';
+  $('crew').value = '2';
+  updatePlaceholders();
+  renderTZChips(); buildTZMenu();
+  showPlanner();
+  recalc();
+}
+
+function loadHomeTrips() {
+  const container = $('homeTrips');
+  container.innerHTML = '<div class="home-empty">Loading...</div>';
+  fetch('trips.php').then(r => r.json()).then(trips => {
+    if (!trips.length) {
+      container.innerHTML = '<div class="home-empty">No saved trips yet.</div>';
+      return;
+    }
+    container.innerHTML = '';
+    for (const t of trips) {
+      const div = document.createElement('div');
+      div.className = 'home-trip';
+      div.innerHTML = `
+        <div style="display:flex;align-items:center;min-width:0">
+          <span class="ht-num">#${t.number || '?'}</span>
+          <div style="min-width:0">
+            <div class="ht-name">${esc(t.name)}</div>
+            <div class="ht-route">${esc(t.route)}</div>
+          </div>
+        </div>
+        <span class="ht-delete" title="Delete">✕</span>`;
+      div.addEventListener('click', e => {
+        if (e.target.classList.contains('ht-delete')) return;
+        loadTripAndShow(t.id);
+      });
+      div.querySelector('.ht-delete').addEventListener('click', e => {
+        e.stopPropagation();
+        if (!confirm(`Delete trip #${t.number || '?'} "${t.name}"?`)) return;
+        fetch('trips.php?action=delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.id }) })
+          .then(() => loadHomeTrips())
+          .catch(() => showToast('Delete failed'));
+      });
+      container.appendChild(div);
+    }
+  }).catch(() => {
+    container.innerHTML = '<div class="home-empty">Failed to load trips.</div>';
+  });
+}
+
+function loadTripAndShow(id) {
+  fetch('trips.php?id=' + encodeURIComponent(id))
+    .then(r => r.json())
+    .then(data => {
+      if (!data.state) return;
+      return airportsPromise.then(() => {
+        const p = new URLSearchParams(data.state);
+        history.replaceState(null, '', '?' + p.toString());
+        currentTripId = id;
+        parseURL();
+        showPlanner();
+        recalc();
+        fetchWinds();
+      });
+    })
+    .catch(() => showToast('Load failed'));
+}
+
+// ── Init: show home or planner based on URL ──
+airportsPromise.then(() => {
+  const p = new URLSearchParams(location.search);
+  if (p.has('a') || p.has('l')) {
+    parseURL();
+    showPlanner();
+    recalc();
+    fetchWinds();
+  } else {
+    showHome();
+  }
+});
 </script>
 </body>
 </html>

@@ -23,7 +23,7 @@ PAVED_SURFACES = {
     "BITUMINOUS", "PAVED", "TARMAC",
 }
 
-MIN_RUNWAY_FT = 3000
+MIN_RUNWAY_FT = 2000
 
 
 def fetch_csv(url):
