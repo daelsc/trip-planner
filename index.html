@@ -439,14 +439,12 @@ function fmtInTz(date, tz) {
 }
 
 // Combine HH:MM time with a reference date in a timezone.
-// If the resulting time is before refDate, assume next day.
+// If the resulting time is before refDate, advance by days until it's after.
 function timeToDate(timeStr, refDate, tz) {
-  const [h, m] = timeStr.split(':').map(Number);
-  // Get the date portion of refDate in the target timezone
   const fp = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' }).format(refDate);
   let dt = dateInTz(`${fp}T${timeStr}`, tz);
-  // If result is before arrival, assume next day
-  if (dt < refDate) dt = new Date(dt.getTime() + 86400000);
+  // Keep advancing by 1 day until we're at or after the reference time
+  while (dt < refDate) dt = new Date(dt.getTime() + 86400000);
   return dt;
 }
 
@@ -878,13 +876,13 @@ function recalc() {
       let defaultMin = profile.startup + profile.shutdown;
       let depOverrideTime = null, gMin;
 
-      if (leg.nextDep && arriveTime) {
-        // User set a departure time — combine with date (explicit or from arrival)
-        if (leg.nextDepDate) {
-          depOverrideTime = dateInTz(`${leg.nextDepDate}T${leg.nextDep}`, nextDepTz);
-        } else {
-          depOverrideTime = timeToDate(leg.nextDep, arriveTime, nextDepTz);
-        }
+      if ((leg.nextDep || leg.nextDepDate) && arriveTime) {
+        // User set a departure time and/or date
+        const useDate = leg.nextDepDate || new Intl.DateTimeFormat('en-CA', { timeZone: nextDepTz, year:'numeric', month:'2-digit', day:'2-digit' }).format(arriveTime);
+        const useTime = leg.nextDep || new Intl.DateTimeFormat('en-GB', { timeZone: nextDepTz, hour:'2-digit', minute:'2-digit', hour12:false }).format(arriveTime);
+        depOverrideTime = dateInTz(`${useDate}T${useTime}`, nextDepTz);
+        // If computed time is before arrival (e.g. same time next day not set), advance
+        while (depOverrideTime < arriveTime) depOverrideTime = new Date(depOverrideTime.getTime() + 86400000);
         gMin = Math.max(0, Math.round((depOverrideTime - arriveTime) / 60000));
       } else if (arriveTime) {
         gMin = leg.groundMin ?? defaultMin;
