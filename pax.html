@@ -11,8 +11,6 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 .trip-meta { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
 .updated { color: #999; font-size: 0.75rem; margin-bottom: 1.5rem; }
 .leg { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 1rem; overflow: hidden; }
-.leg-header { background: #f5f5f5; padding: 0.6rem 1rem; font-weight: 600; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
-.leg-header .block-time { font-weight: 400; color: #666; font-size: 0.85rem; }
 .leg-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
 .leg-col { padding: 0.75rem 1rem; }
 .leg-col + .leg-col { border-left: 1px solid #e0e0e0; }
@@ -179,13 +177,13 @@ async function loadAndRender() {
     if (legs[i-1].arr) legs[i].dep = legs[i-1].arr;
   }
 
-  // Pre-fetch FBOs for all airports that have selections
-  const fboPromises = [];
-  for (const leg of legs) {
-    if (leg.depFbo && leg.dep) fboPromises.push(fetchFbos(leg.dep));
-    if (leg.arrFbo && leg.arr) fboPromises.push(fetchFbos(leg.arr));
+  // Pre-fetch FBOs for all airports with FBO selections
+  const fboIcaos = new Set();
+  for (let i = 0; i < legs.length; i++) {
+    if (i === 0 && legs[i].depFbo && legs[i].dep) fboIcaos.add(legs[i].dep);
+    if (legs[i].arrFbo && legs[i].arr) fboIcaos.add(legs[i].arr);
   }
-  await Promise.all(fboPromises);
+  await Promise.all([...fboIcaos].map(ic => fetchFbos(ic)));
 
   // Compute times
   const startVal = p.t || '';
@@ -215,9 +213,11 @@ async function loadAndRender() {
     }
 
     // Find selected FBO info
+    // For legs after the first, departure FBO = previous leg's arrival FBO (same airport)
     let depFboInfo = null, arrFboInfo = null;
-    if (leg.depFbo && fboCache[leg.dep]) {
-      depFboInfo = fboCache[leg.dep].find(f => f.name === leg.depFbo) || null;
+    const depFboName = (i === 0) ? leg.depFbo : (legs[i-1]?.arrFbo || '');
+    if (depFboName && fboCache[leg.dep]) {
+      depFboInfo = fboCache[leg.dep].find(f => f.name === depFboName) || null;
     }
     if (leg.arrFbo && fboCache[leg.arr]) {
       arrFboInfo = fboCache[leg.arr].find(f => f.name === leg.arrFbo) || null;
@@ -281,7 +281,6 @@ async function loadAndRender() {
     const { leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime, depFboInfo, arrFboInfo } = c;
 
     html += `<div class="leg">`;
-    html += `<div class="leg-header"><span>Leg ${i+1}</span><span class="block-time">${fmtDur(blockMin)} block</span></div>`;
     html += `<div class="leg-body">`;
 
     // Departure column
@@ -296,7 +295,7 @@ async function loadAndRender() {
       html += `<div class="time-date">${fmtDate(departTime, depTz)}</div>`;
       html += `</div>`;
     }
-    if (i === 0 && depFboInfo) {
+    if (depFboInfo) {
       html += `<div class="fbo-info">`;
       html += `<div class="fbo-name">${esc(depFboInfo.name)}</div>`;
       if (depFboInfo.phone) html += `<div class="fbo-phone"><a href="tel:${esc(depFboInfo.phone)}">${esc(depFboInfo.phone)}</a></div>`;
