@@ -656,6 +656,7 @@ function recalc() {
     str.querySelector('#startTimeInline').addEventListener('change', syncStartTime);
   }
 
+  let restDepInfo = null;
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i];
     const depApt = aptIdx[leg.dep], arrApt = aptIdx[leg.arr];
@@ -683,6 +684,27 @@ function recalc() {
         <td>${fmtTimeCell(dutyStartTime, showTz)}</td><td></td><td></td>`;
       tbody.appendChild(str);
       needsShowRow = false;
+
+      // Departure time row after rest (rendered here so it's next to the departing leg)
+      if (restDepInfo) {
+        const rd = restDepInfo;
+        const dtr = document.createElement('tr');
+        dtr.className = 'ground-row';
+        dtr.innerHTML = `<td></td>
+          <td colspan="6" style="padding-left:1.5rem">
+            ⏱ <strong>${esc(leg.dep||'?')}</strong>
+            — depart <input class="dep-override" type="time" value="${esc(rd.depTimeVal)}" data-l="${rd.legIndex}">
+            <span class="dim">${rd.nextDepTz ? fmtTzShort(rd.nextDepTz) : ''}</span>
+            ${rd.depDateLabel ? `<span class="date-lbl" style="margin-left:0.3rem">${rd.depDateLabel}</span>` : ''}
+            <span class="dim" style="margin-left:0.3rem">(${fmtDur(rd.gMin)} ground)</span>
+          </td><td colspan="3"></td>`;
+        tbody.appendChild(dtr);
+        dtr.querySelector('.dep-override').addEventListener('change', function() {
+          legs[rd.legIndex].nextDep = this.value;
+          recalc();
+        });
+        restDepInfo = null;
+      }
     }
 
     // Departure/arrival times
@@ -777,8 +799,9 @@ function recalc() {
       }
 
       if (leg.rest) {
-        // ── Big rest block with departure time ──
-        const arrFmtLocal = arriveTime && arrTz ? fmtInTz(arriveTime, arrTz) : null;
+        // ── Big rest block (departure time renders near next leg) ──
+        const offDutyTime = arriveTime ? new Date(arriveTime.getTime() + 30 * 60000) : null;
+        const offDutyFmt = offDutyTime && arrTz ? fmtInTz(offDutyTime, arrTz) : null;
         const restWarn = gMin < 600 ? `<span class="rest-warn" style="margin-left:0.5rem">⚠ Below 10h minimum</span>` : '';
 
         const rtr = document.createElement('tr');
@@ -790,20 +813,13 @@ function recalc() {
             </div>
             <div style="margin-top:0.35rem">
               <span class="rest-duration">${fmtDur(gMin)}</span>
-              ${arrFmtLocal ? `<span class="rest-times" style="margin-left:0.75rem">Off duty ${arrFmtLocal.time} ${arrFmtLocal.abbr}</span>` : ''}
-            </div>
-            <div style="margin-top:0.35rem">
-              Depart <input class="dep-override" type="time" value="${esc(depTimeVal)}" data-l="${i}">
-              <span class="dim">${nextDepTz ? fmtTzShort(nextDepTz) : ''}</span>
-              ${depDateLabel ? `<span class="date-lbl" style="margin-left:0.3rem">${depDateLabel}</span>` : ''}
+              ${offDutyFmt ? `<span class="rest-times" style="margin-left:0.75rem">Off duty ${offDutyFmt.time} ${offDutyFmt.abbr} (30 min after landing)</span>` : ''}
             </div>
           </td><td></td>`;
         tbody.appendChild(rtr);
 
-        rtr.querySelector('.dep-override').addEventListener('change', function() {
-          legs[i].nextDep = this.value;
-          recalc();
-        });
+        // Store dep time info to render next to the departing leg
+        restDepInfo = { depTimeVal, nextDepTz, depDateLabel, legIndex: i, gMin };
       } else {
         // ── Normal ground row ──
         const gtr = document.createElement('tr');
@@ -898,7 +914,7 @@ function updateCrew(legCalc, crewCount, showMin) {
         flight24 += legCalc[j].flightMin;
     }
 
-    const dutyMin = (lc.arriveTime - dutyStart) / 60000;
+    const dutyMin = (lc.arriveTime - dutyStart) / 60000 + 30; // 30 min post-landing duty
     const flightRem = maxFlight - dutyFlightMin;
     const dutyRem = maxDuty - dutyMin;
     const worst = Math.min(flightRem, dutyRem);
