@@ -737,7 +737,9 @@ function recalc() {
       const d = depRow.querySelector('#startDateInline').value;
       const t = depRow.querySelector('#startTimeInline').value;
       $('startTime').value = (d && t) ? d + 'T' + t : '';
-      recalc();
+      // Delay recalc so the other input isn't destroyed mid-interaction
+      clearTimeout(syncStartTime._timer);
+      syncStartTime._timer = setTimeout(recalc, 50);
     }
     depRow.querySelector('#startDateInline').addEventListener('change', syncStartTime);
     depRow.querySelector('#startTimeInline').addEventListener('change', syncStartTime);
@@ -852,7 +854,7 @@ function recalc() {
     tr.querySelectorAll('.icao-input').forEach(inp => {
       const li = +inp.dataset.l, f = inp.dataset.f;
       setupAC(inp, li, f);
-      inp.addEventListener('blur', () => { inp.value = inp.value.toUpperCase().trim(); legs[li][f] = inp.value; recalc(); });
+      inp.addEventListener('blur', () => { const v = inp.value.toUpperCase().trim(); if (v !== legs[li][f]) { legs[li][f] = v; recalc(); } });
     });
 
     legCalc.push({ distNm, flightMin, blockMin, departTime, arriveTime, depTz, arrTz });
