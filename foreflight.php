@@ -43,6 +43,12 @@ if (empty($ffFlights)) {
 
 $payload = json_encode(['flights' => $ffFlights]);
 
+// Debug log
+$logDir = __DIR__ . '/ff_logs';
+if (!is_dir($logDir)) mkdir($logDir, 0755, true);
+$logFile = "$logDir/" . date('Y-m-d_H-i-s') . '.log';
+file_put_contents($logFile, "=== REQUEST ===\n" . json_encode($ffFlights, JSON_PRETTY_PRINT) . "\n\n");
+
 $ctx = stream_context_create(['http' => [
     'method' => 'POST',
     'header' => "Content-Type: application/json\r\n" .
@@ -56,6 +62,8 @@ $resp = @file_get_contents($FF_URL, false, $ctx);
 $statusLine = $http_response_headers[0] ?? '';
 preg_match('/(\d{3})/', $statusLine, $m);
 $statusCode = (int)($m[1] ?? 500);
+
+file_put_contents($logFile, "=== RESPONSE (HTTP $statusCode) ===\n" . ($resp ?: 'false') . "\n", FILE_APPEND);
 
 if ($resp === false) {
     http_response_code(502);
