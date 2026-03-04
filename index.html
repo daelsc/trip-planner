@@ -1588,17 +1588,17 @@ function doLogin() {
 $('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
 
 function initApp() {
-  airportsPromise.then(() => {
-    const p = new URLSearchParams(location.search);
-    if (p.has('a') || p.has('l')) {
+  const p = new URLSearchParams(location.search);
+  if (p.has('a') || p.has('l')) {
+    airportsPromise.then(() => {
       parseURL();
       showPlanner();
       recalc();
       fetchWinds();
-    } else {
-      showHome();
-    }
-  });
+    });
+  } else {
+    showHome();
+  }
 }
 
 // Check auth on load
