@@ -31,8 +31,14 @@ if ($method === 'GET' && !isset($_GET['id'])) {
         $data = json_decode(file_get_contents($f), true);
         if ($data) {
             $tripDate = '';
+            $endDate = '';
             if (isset($data['state']['t'])) {
                 $tripDate = substr($data['state']['t'], 0, 10); // YYYY-MM-DD
+                $endDate = $tripDate;
+            }
+            if (!empty($data['state']['dd'])) {
+                $ddParts = array_filter(explode(',', $data['state']['dd']));
+                if ($ddParts) $endDate = end($ddParts);
             }
             $trips[] = [
                 'id' => basename($f, '.json'),
@@ -40,6 +46,7 @@ if ($method === 'GET' && !isset($_GET['id'])) {
                 'name' => $data['name'] ?? 'Untitled',
                 'route' => $data['route'] ?? '',
                 'date' => $tripDate,
+                'endDate' => $endDate,
                 'saved' => $data['saved'] ?? '',
                 'aircraft' => $data['state']['a'] ?? '',
             ];
@@ -123,6 +130,7 @@ if ($method === 'POST') {
         'name' => substr($input['name'], 0, 100),
         'route' => $route,
         'state' => $input['state'],
+        'computed' => $input['computed'] ?? null,
         'saved' => date('c'),
     ];
     file_put_contents("$dataDir/$id.json", json_encode($data, JSON_PRETTY_PRINT));

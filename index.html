@@ -201,7 +201,14 @@ button:hover { background: #2563eb; }
     </select>
   </div>
   <div id="homeTrips" class="home-trips"></div>
-  <button class="home-new" onclick="startNewTrip()">+ New Trip</button>
+  <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:1rem">
+    <button class="home-new" onclick="startNewTrip()">+ New Trip</button>
+    <label class="view-toggle" style="margin-left:auto">
+      <input type="checkbox" id="showPastTrips" onchange="loadHomeTrips()">
+      <span class="view-slider"></span>
+    </label>
+    <span style="font-size:0.78rem;color:#64748b;cursor:pointer" onclick="$('showPastTrips').checked=!$('showPastTrips').checked;loadHomeTrips()">Previous Trips</span>
+  </div>
 </div>
 
 <!-- Planner (hidden until trip selected) -->
@@ -643,38 +650,91 @@ function altToPressure(ft) {
   return best[1];
 }
 
+// Wind triangle: compute ground speed from TAS, headwind and crosswind components
+function windTriangleGs(tas, hw, xw) {
+  const tasAfterCrab = Math.sqrt(Math.max(0, tas * tas - xw * xw));
+  return Math.max(50, tasAfterCrab - hw);
+}
+
 async function fetchWinds() {
   if (windsLoading) return;
   if (!legs.some(l => aptIdx[l.dep] && aptIdx[l.arr])) return;
   const profile = getProfile();
   const altFt = profile.alt * 100;
-  const hPa = altToPressure(altFt);
+  const cruiseHPa = altToPressure(altFt);
+  // Climb/descent mid-altitude: halfway between ground and cruise
+  const phaseHPa = altToPressure(altFt / 2);
   windsLoading = true;
 
   try {
     const fetches = legs.map(async (leg, i) => {
       const dep = aptIdx[leg.dep], arr = aptIdx[leg.arr];
       if (!dep || !arr) { leg.wind = null; return; }
-      const midLat = ((dep.lat + arr.lat) / 2).toFixed(2);
-      const midLon = ((dep.lon + arr.lon) / 2).toFixed(2);
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&hourly=wind_speed_${hPa}hPa,wind_direction_${hPa}hPa&wind_speed_unit=kn&forecast_days=2&timezone=UTC`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-      const speeds = data.hourly[`wind_speed_${hPa}hPa`];
-      const dirs = data.hourly[`wind_direction_${hPa}hPa`];
-      const times = data.hourly.time;
+      const dist = haversine(dep.lat, dep.lon, arr.lat, arr.lon);
+      if (dist < 1) { leg.wind = null; return; }
+      // Sample points along the great circle based on distance
+      const nSamples = dist < 500 ? 1 : dist < 1500 ? 3 : dist < 3000 ? 5 : 7;
+      const samplePoints = [];
+      const la1 = toRad(dep.lat), lo1 = toRad(dep.lon), la2 = toRad(arr.lat), lo2 = toRad(arr.lon);
+      const d = dist / R_NM; // angular distance
+      const sinD = Math.sin(d);
+      for (let s = 0; s < nSamples; s++) {
+        const frac = nSamples === 1 ? 0.5 : (s + 1) / (nSamples + 1);
+        const a = Math.sin((1 - frac) * d) / sinD;
+        const b = Math.sin(frac * d) / sinD;
+        const x = a * Math.cos(la1) * Math.cos(lo1) + b * Math.cos(la2) * Math.cos(lo2);
+        const y = a * Math.cos(la1) * Math.sin(lo1) + b * Math.cos(la2) * Math.sin(lo2);
+        const z = a * Math.sin(la1) + b * Math.sin(la2);
+        samplePoints.push({ lat: toDeg(Math.atan2(z, Math.sqrt(x*x + y*y))), lon: toDeg(Math.atan2(y, x)) });
+      }
       let targetHour = new Date().toISOString().slice(0,13) + ':00';
       const depTime = legDepartures[i];
       if (depTime) targetHour = depTime.toISOString().slice(0,13) + ':00';
-      let bestIdx = 0;
-      for (let t = 0; t < times.length; t++) {
-        if (times[t] <= targetHour) bestIdx = t;
-      }
-      const windSpd = speeds[bestIdx];
-      const windDir = dirs[bestIdx];
-      const track = bearing(dep.lat, dep.lon, arr.lat, arr.lon);
-      const hw = windSpd * Math.cos(toRad(windDir - track));
-      leg.wind = { dir: Math.round(windDir), speed: Math.round(windSpd), headwind: Math.round(hw), hPa };
+      // Build API vars: cruise level + climb/descent level (if different)
+      const needPhase = phaseHPa !== cruiseHPa;
+      let vars = `wind_speed_${cruiseHPa}hPa,wind_direction_${cruiseHPa}hPa`;
+      if (needPhase) vars += `,wind_speed_${phaseHPa}hPa,wind_direction_${phaseHPa}hPa`;
+      // Fetch wind at each sample point (7-day forecast for trips further out)
+      const results = await Promise.all(samplePoints.map(async (pt) => {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${pt.lat.toFixed(2)}&longitude=${pt.lon.toFixed(2)}&hourly=${vars}&wind_speed_unit=kn&forecast_days=7&timezone=UTC`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        const times = data.hourly.time;
+        let bestIdx = 0;
+        for (let t = 0; t < times.length; t++) {
+          if (times[t] <= targetHour) bestIdx = t;
+        }
+        const track = bearing(pt.lat, pt.lon, arr.lat, arr.lon);
+        // Cruise winds
+        const cSpd = data.hourly[`wind_speed_${cruiseHPa}hPa`][bestIdx];
+        const cDir = data.hourly[`wind_direction_${cruiseHPa}hPa`][bestIdx];
+        const cAngle = toRad(cDir - track);
+        const hw = cSpd * Math.cos(cAngle);
+        const xw = cSpd * Math.sin(cAngle);
+        // Climb/descent winds (at mid-phase altitude)
+        let phaseHw = hw, phaseXw = xw, phaseSpd = cSpd, phaseDir = cDir;
+        if (needPhase) {
+          phaseSpd = data.hourly[`wind_speed_${phaseHPa}hPa`][bestIdx];
+          phaseDir = data.hourly[`wind_direction_${phaseHPa}hPa`][bestIdx];
+          const pAngle = toRad(phaseDir - track);
+          phaseHw = phaseSpd * Math.cos(pAngle);
+          phaseXw = phaseSpd * Math.sin(pAngle);
+        }
+        return { windSpd: cSpd, windDir: cDir, hw, xw, phaseHw, phaseXw, phaseSpd, phaseDir };
+      }));
+      const segmentHws = results.map(r => r.hw);
+      const segmentXws = results.map(r => r.xw);
+      const avgHw = segmentHws.reduce((s, h) => s + h, 0) / segmentHws.length;
+      const avgSpd = results.reduce((s, r) => s + r.windSpd, 0) / results.length;
+      // Average climb/descent wind components (from first and last sample or all if single)
+      const phaseHw = (results[0].phaseHw + results[results.length - 1].phaseHw) / 2;
+      const phaseXw = (results[0].phaseXw + results[results.length - 1].phaseXw) / 2;
+      // Vector-average wind direction to handle 360/0 wraparound
+      const dirX = results.reduce((s, r) => s + Math.cos(toRad(r.windDir)), 0);
+      const dirY = results.reduce((s, r) => s + Math.sin(toRad(r.windDir)), 0);
+      const avgDir = (toDeg(Math.atan2(dirY, dirX)) + 360) % 360;
+      leg.wind = { dir: Math.round(avgDir), speed: Math.round(avgSpd), headwind: Math.round(avgHw),
+        segmentHws, segmentXws, phaseHw, phaseXw, hPa: cruiseHPa, phaseHPa, samples: nSamples };
     });
     await Promise.all(fetches);
   } catch (e) {
@@ -769,24 +829,41 @@ function recalc() {
     let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
 
     // Flight time (3-phase: climb, cruise, descent)
+    // Uses wind triangle (headwind + crosswind) and per-segment cruise winds
     let flightMin = null;
     if (distNm != null && profile.speed > 0) {
-      const hw = leg.wind ? leg.wind.headwind : 0;
-      const cruiseGs = Math.max(50, profile.speed - hw);
+      const w = leg.wind;
+      const hw = w ? w.headwind : 0;
+      const xw = w?.segmentXws ? w.segmentXws.reduce((s,v)=>s+v,0)/w.segmentXws.length : 0;
+      const pHw = w?.phaseHw ?? hw;
+      const pXw = w?.phaseXw ?? xw;
+
       if (profile.climbSpeed && profile.descentSpeed && profile.phaseMin) {
-        const climbGs = Math.max(50, profile.climbSpeed - hw);
-        const descentGs = Math.max(50, profile.descentSpeed - hw);
+        const climbGs = windTriangleGs(profile.climbSpeed, pHw, pXw);
+        const descentGs = windTriangleGs(profile.descentSpeed, pHw, pXw);
         const climbDist = climbGs * (profile.phaseMin / 60);
         const descentDist = descentGs * (profile.phaseMin / 60);
         if (distNm <= climbDist + descentDist) {
-          // Short leg: split evenly between climb and descent speeds
           const avgGs = (climbGs + descentGs) / 2;
           flightMin = (distNm / avgGs) * 60;
         } else {
           const cruiseDist = distNm - climbDist - descentDist;
-          flightMin = profile.phaseMin + (cruiseDist / cruiseGs) * 60 + profile.phaseMin;
+          const segs = w?.segmentHws;
+          const xws = w?.segmentXws;
+          if (segs && segs.length > 1) {
+            const segDist = cruiseDist / segs.length;
+            let cruiseMin = 0;
+            for (let si = 0; si < segs.length; si++) {
+              cruiseMin += (segDist / windTriangleGs(profile.speed, segs[si], xws[si])) * 60;
+            }
+            flightMin = profile.phaseMin + cruiseMin + profile.phaseMin;
+          } else {
+            const cruiseGs = windTriangleGs(profile.speed, hw, xw);
+            flightMin = profile.phaseMin + (cruiseDist / cruiseGs) * 60 + profile.phaseMin;
+          }
         }
       } else {
+        const cruiseGs = windTriangleGs(profile.speed, hw, xw);
         flightMin = (distNm / cruiseGs) * 60;
       }
     }
@@ -933,7 +1010,7 @@ function recalc() {
     const depTimeInput = tr.querySelector('[data-dep-f="time"]');
     if (curDepIndex === -1) {
       // First leg: sync to start time stores
-      depDateInput.addEventListener('change', function() {
+      depDateInput.addEventListener('blur', function() {
         $('startDateStore').value = this.value;
         const t = $('startTimeStore').value;
         $('startTime').value = (this.value && t) ? this.value + 'T' + t : '';
@@ -948,7 +1025,7 @@ function recalc() {
     } else {
       // Subsequent legs: sync to previous leg's nextDep/nextDepDate
       const li = curDepIndex;
-      depDateInput.addEventListener('change', function() {
+      depDateInput.addEventListener('blur', function() {
         legs[li].nextDepDate = this.value;
         recalc();
       });
@@ -1178,11 +1255,14 @@ function updateCrew(legCalc, crewCount, showMin) {
   }
 
   // Passenger view: one row per duty day in table
-  for (const ds of daySummaries) {
+  for (let di = 0; di < daySummaries.length; di++) {
+    const ds = daySummaries[di];
     const issues = [];
     if (ds.flightMin > ds.maxFlight) issues.push(`Flight time exceeds ${fmtDur(ds.maxFlight)} limit`);
     if (ds.dutyMin > ds.maxDuty) issues.push(`Duty day exceeds ${fmtDur(ds.maxDuty)} limit`);
-    if (ds.restAfter != null && ds.restAfter < 600) issues.push(`Only ${fmtDur(ds.restAfter)} rest (10h min)`);
+    // Insufficient rest before this day affects this day, not the previous one
+    const prevRest = di > 0 ? daySummaries[di-1].restAfter : null;
+    if (prevRest != null && prevRest < 600) issues.push(`Only ${fmtDur(prevRest)} rest before this day (10h min)`);
 
     let cls, statusTxt;
     if (issues.length) { cls = 'status-bad'; statusTxt = issues.join('; '); }
@@ -1262,7 +1342,12 @@ function getTripState() {
 }
 
 function doSave(name, id) {
-  const body = { name, state: getTripState() };
+  const computed = lastLegCalc.map(lc => ({
+    depart: lc.departTime ? lc.departTime.getTime() : null,
+    arrive: lc.arriveTime ? lc.arriveTime.getTime() : null,
+    blockMin: lc.blockMin ?? null,
+  }));
+  const body = { name, state: getTripState(), computed };
   if (id) body.id = id;
   fetch('trips.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(r => r.json())
@@ -1524,7 +1609,13 @@ function startNewTrip() {
   extraTZ = [];
   $('aircraft').value = $('homeAircraft').value || 'G550';
   $('pClimb').value = ''; $('pSpeed').value = ''; $('pDescent').value = ''; $('pStartup').value = ''; $('pShutdown').value = ''; $('pAlt').value = ''; $('showTime').value = '';
-  $('startTime').value = ''; $('startDateStore').value = ''; $('startTimeStore').value = '';
+  const def = new Date();
+  def.setDate(def.getDate() + 1);
+  const p2 = n => String(n).padStart(2, '0');
+  const defDate = `${def.getFullYear()}-${p2(def.getMonth()+1)}-${p2(def.getDate())}`;
+  const defTime = '10:00';
+  $('startDateStore').value = defDate; $('startTimeStore').value = defTime;
+  $('startTime').value = defDate + 'T' + defTime;
   $('crew').value = '2';
   updatePlaceholders();
   showPlanner();
@@ -1537,9 +1628,15 @@ function loadHomeTrips() {
   container.innerHTML = '<div class="home-empty">Loading...</div>';
   fetch('trips.php').then(r => r.json()).then(trips => {
     const ac = $('homeAircraft').value;
-    const filtered = trips.filter(t => !t.aircraft || t.aircraft === ac);
+    const showPast = $('showPastTrips').checked;
+    const today = new Date().toISOString().slice(0, 10);
+    const filtered = trips.filter(t => {
+      if (t.aircraft && t.aircraft !== ac) return false;
+      if (!showPast && t.endDate && t.endDate < today) return false;
+      return true;
+    });
     if (!filtered.length) {
-      container.innerHTML = '<div class="home-empty">No saved trips for this aircraft.</div>';
+      container.innerHTML = '<div class="home-empty">No ' + (showPast ? 'saved' : 'upcoming') + ' trips for this aircraft.</div>';
       return;
     }
     container.innerHTML = '';
@@ -1604,7 +1701,9 @@ $('homeAircraft').addEventListener('change', () => loadHomeTrips());
 
 function initApp() {
   const p = new URLSearchParams(location.search);
-  if (p.has('a') || p.has('l')) {
+  if (p.has('load')) {
+    airportsPromise.then(() => loadTripAndShow(p.get('load')));
+  } else if (p.has('a') || p.has('l')) {
     airportsPromise.then(() => {
       parseURL();
       showPlanner();

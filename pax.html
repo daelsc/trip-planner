@@ -10,6 +10,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 .trip-meta { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
 .updated { color: #999; font-size: 0.75rem; margin-bottom: 1.5rem; }
+.edit-link { font-size: 0.8rem; margin-bottom: 1.5rem; }
+.edit-link a { color: #2563eb; text-decoration: none; }
+.edit-link a:hover { text-decoration: underline; }
 .leg { border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 1rem; overflow: hidden; }
 .leg-header { background: #f8f8f8; padding: 0.4rem 1rem; font-size: 0.78rem; font-weight: 600; color: #666; border-bottom: 1px solid #e0e0e0; }
 .leg-body { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; }
@@ -33,7 +36,7 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 .loading { text-align: center; padding: 3rem; color: #999; }
 @media print {
   body { padding: 0.5rem; }
-  .updated { display: none; }
+  .updated, .edit-link { display: none; }
 }
 @media (max-width: 500px) {
   body { padding: 1rem; }
@@ -47,10 +50,19 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 
 <script>
 const PROFILES = {
-  G550:   { speed: 478, climbSpeed: 325, descentSpeed: 325, phaseMin: 15, startup: 20, shutdown: 10 },
-  PC12:   { speed: 270, climbSpeed: 180, descentSpeed: 180, phaseMin: 15, startup: 10, shutdown: 5 },
-  custom: { speed: 250, startup: 10, shutdown: 5 },
+  G550:   { speed: 478, climbSpeed: 325, descentSpeed: 325, phaseMin: 15, startup: 20, shutdown: 10, alt: 400 },
+  PC12:   { speed: 270, climbSpeed: 180, descentSpeed: 180, phaseMin: 15, startup: 10, shutdown: 5, alt: 280 },
+  custom: { speed: 250, startup: 10, shutdown: 5, alt: 350 },
 };
+
+const ALT_PRESSURE = [
+  [53000,100],[45000,150],[39000,200],[34000,250],[30000,300],
+  [24000,400],[18000,500],[14000,600],[10000,700],[5000,850],[3000,900],
+];
+function altToPressure(ft) {
+  for (const [a, p] of ALT_PRESSURE) if (ft >= a) return p;
+  return 1000;
+}
 
 const R_NM = 3440.065, toRad = d => d * Math.PI / 180;
 function haversine(lat1, lon1, lat2, lon2) {
@@ -66,7 +78,7 @@ function bearing(lat1, lon1, lat2, lon2) {
 }
 
 function fmtDur(min) {
-  if (min == null || min < 0) return '—';
+  if (min == null || min < 0) return '\u2014';
   const total = Math.round(min);
   const h = Math.floor(total/60), m = total % 60;
   return `${h}:${m.toString().padStart(2,'0')}`;
@@ -117,6 +129,48 @@ async function fetchFbos(icao) {
   return fboCache[icao];
 }
 
+async function fetchWindForLeg(dep, arr, hPa, departTime) {
+  if (!dep || !arr) return null;
+  try {
+    const midLat = ((dep.lat + arr.lat) / 2).toFixed(2);
+    const midLon = ((dep.lon + arr.lon) / 2).toFixed(2);
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&hourly=wind_speed_${hPa}hPa,wind_direction_${hPa}hPa&wind_speed_unit=kn&forecast_days=2&timezone=UTC`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    const speeds = data.hourly[`wind_speed_${hPa}hPa`];
+    const dirs = data.hourly[`wind_direction_${hPa}hPa`];
+    const times = data.hourly.time;
+    let targetHour = new Date().toISOString().slice(0,13) + ':00';
+    if (departTime) targetHour = departTime.toISOString().slice(0,13) + ':00';
+    let bestIdx = 0;
+    for (let t = 0; t < times.length; t++) {
+      if (times[t] <= targetHour) bestIdx = t;
+    }
+    const windSpd = speeds[bestIdx];
+    const windDir = dirs[bestIdx];
+    const track = bearing(dep.lat, dep.lon, arr.lat, arr.lon);
+    const hw = windSpd * Math.cos(toRad(windDir - track));
+    return Math.round(hw);
+  } catch { return 0; }
+}
+
+function calcFlightMin(distNm, profile, hw) {
+  if (distNm == null || profile.speed <= 0) return null;
+  const cruiseGs = Math.max(50, profile.speed - hw);
+  if (profile.climbSpeed && profile.descentSpeed && profile.phaseMin) {
+    const climbGs = Math.max(50, profile.climbSpeed - hw);
+    const descentGs = Math.max(50, profile.descentSpeed - hw);
+    const climbDist = climbGs * (profile.phaseMin / 60);
+    const descentDist = descentGs * (profile.phaseMin / 60);
+    if (distNm <= climbDist + descentDist) {
+      return (distNm / ((climbGs + descentGs) / 2)) * 60;
+    }
+    const cruiseDist = distNm - climbDist - descentDist;
+    return profile.phaseMin + (cruiseDist / cruiseGs) * 60 + profile.phaseMin;
+  }
+  return (distNm / cruiseGs) * 60;
+}
+
 async function loadAndRender() {
   const params = new URLSearchParams(location.search);
   const tripId = params.get('id');
@@ -153,6 +207,7 @@ async function loadAndRender() {
     phaseMin: base.phaseMin || null,
     startup: p.osu != null ? +p.osu : base.startup,
     shutdown: p.osd != null ? +p.osd : base.shutdown,
+    alt: p.fl ? +p.fl : base.alt,
   };
 
   if (!p.l) {
@@ -194,52 +249,78 @@ async function loadAndRender() {
   }
   await Promise.all([...fboIcaos].map(ic => fetchFbos(ic)));
 
-  // Compute times
-  const startVal = p.t || '';
-  let currentTime = null;
-  if (startVal) {
-    const firstDep = legs[0]?.dep;
-    const firstTz = aptIdx[firstDep]?.tz || 'America/New_York';
-    currentTime = dateInTz(startVal, firstTz);
-  }
+  // Two-pass time computation (matches index.html):
+  // Pass 1: compute times without wind to get approximate departure times
+  // Pass 2: fetch wind using those departure times, recompute with wind
+  const altFt = (profile.alt || 350) * 100;
+  const hPa = altToPressure(altFt);
 
-  const computed = [];
+  function computeTimes(winds) {
+    const startVal = p.t || '';
+    let currentTime = null;
+    if (startVal) {
+      const firstDep = legs[0]?.dep;
+      const firstTz = aptIdx[firstDep]?.tz || 'UTC';
+      currentTime = dateInTz(startVal, firstTz);
+    }
 
-  for (let i = 0; i < legs.length; i++) {
-    const leg = legs[i];
-    const depApt = aptIdx[leg.dep], arrApt = aptIdx[leg.arr];
-    const depTz = depApt?.tz, arrTz = arrApt?.tz;
+    const results = [];
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      const depApt = aptIdx[leg.dep], arrApt = aptIdx[leg.arr];
+      const depTz = depApt?.tz, arrTz = arrApt?.tz;
 
-    let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
-    let flightMin = null;
-    if (distNm != null && profile.speed > 0) {
-      const cruiseGs = profile.speed;
-      if (profile.climbSpeed && profile.descentSpeed && profile.phaseMin) {
-        const climbGs = profile.climbSpeed;
-        const descentGs = profile.descentSpeed;
-        const climbDist = climbGs * (profile.phaseMin / 60);
-        const descentDist = descentGs * (profile.phaseMin / 60);
-        if (distNm <= climbDist + descentDist) {
-          const avgGs = (climbGs + descentGs) / 2;
-          flightMin = (distNm / avgGs) * 60;
+      const distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
+      const hw = winds[i] || 0;
+      const flightMin = calcFlightMin(distNm, profile, hw);
+      const blockMin = (flightMin != null) ? profile.startup + flightMin + profile.shutdown : null;
+
+      let departTime = null, arriveTime = null;
+      if (currentTime && blockMin != null) {
+        departTime = new Date(currentTime.getTime());
+        arriveTime = new Date(currentTime.getTime() + blockMin * 60000);
+      }
+
+      results.push({ leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime });
+
+      // Advance clock
+      if (i < legs.length - 1 && arriveTime) {
+        const nextLeg = legs[i+1];
+        const nextDepApt = aptIdx[nextLeg.dep];
+        const nextDepTz = nextDepApt?.tz || arrTz || 'UTC';
+        const defaultMin = profile.startup + profile.shutdown;
+
+        if (leg.nextDep || leg.nextDepDate) {
+          const useDate = leg.nextDepDate || new Intl.DateTimeFormat('en-CA', { timeZone: nextDepTz, year:'numeric', month:'2-digit', day:'2-digit' }).format(arriveTime);
+          const useTime = leg.nextDep || new Intl.DateTimeFormat('en-GB', { timeZone: nextDepTz, hour:'2-digit', minute:'2-digit', hour12:false }).format(arriveTime);
+          let depOverride = dateInTz(`${useDate}T${useTime}`, nextDepTz);
+          while (depOverride < arriveTime) depOverride = new Date(depOverride.getTime() + 86400000);
+          currentTime = depOverride;
         } else {
-          const cruiseDist = distNm - climbDist - descentDist;
-          flightMin = profile.phaseMin + (cruiseDist / cruiseGs) * 60 + profile.phaseMin;
+          const gMin = leg.groundMin ?? defaultMin;
+          currentTime = new Date(arriveTime.getTime() + gMin * 60000);
         }
-      } else {
-        flightMin = (distNm / cruiseGs) * 60;
+      } else if (arriveTime) {
+        currentTime = arriveTime;
       }
     }
-    let blockMin = (flightMin != null) ? profile.startup + flightMin + profile.shutdown : null;
+    return results;
+  }
 
-    let departTime = null, arriveTime = null;
-    if (currentTime && blockMin != null) {
-      departTime = new Date(currentTime.getTime());
-      arriveTime = new Date(currentTime.getTime() + blockMin * 60000);
-    }
+  // Pass 1: no wind
+  const noWindResults = computeTimes(legs.map(() => 0));
 
-    // Find selected FBO info
-    // For legs after the first, departure FBO = previous leg's arrival FBO (same airport)
+  // Pass 2: fetch wind using pass-1 departure times, then recompute
+  const windFetches = legs.map((leg, i) => {
+    const depApt = aptIdx[leg.dep], arrApt = aptIdx[leg.arr];
+    return fetchWindForLeg(depApt, arrApt, hPa, noWindResults[i]?.departTime);
+  });
+  const winds = await Promise.all(windFetches);
+  const calcResults = computeTimes(winds.map(w => w || 0));
+
+  // Attach FBO info
+  const computed = calcResults.map((c, i) => {
+    const leg = c.leg;
     let depFboInfo = null, arrFboInfo = null;
     const depFboName = (i === 0) ? leg.depFbo : (legs[i-1]?.arrFbo || '');
     if (depFboName && fboCache[leg.dep]) {
@@ -248,30 +329,8 @@ async function loadAndRender() {
     if (leg.arrFbo && fboCache[leg.arr]) {
       arrFboInfo = fboCache[leg.arr].find(f => f.name === leg.arrFbo) || null;
     }
-
-    computed.push({ leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime, depFboInfo, arrFboInfo });
-
-    // Advance clock for ground time
-    if (i < legs.length - 1 && arriveTime) {
-      const nextLeg = legs[i+1];
-      const nextDepApt = aptIdx[nextLeg.dep];
-      const nextDepTz = nextDepApt?.tz || arrTz;
-      const defaultMin = profile.startup + profile.shutdown;
-
-      if (leg.nextDep || leg.nextDepDate) {
-        const useDate = leg.nextDepDate || new Intl.DateTimeFormat('en-CA', { timeZone: nextDepTz, year:'numeric', month:'2-digit', day:'2-digit' }).format(arriveTime);
-        const useTime = leg.nextDep || new Intl.DateTimeFormat('en-GB', { timeZone: nextDepTz, hour:'2-digit', minute:'2-digit', hour12:false }).format(arriveTime);
-        let depOverride = dateInTz(`${useDate}T${useTime}`, nextDepTz);
-        while (depOverride < arriveTime) depOverride = new Date(depOverride.getTime() + 86400000);
-        currentTime = depOverride;
-      } else {
-        const gMin = leg.groundMin ?? defaultMin;
-        currentTime = new Date(arriveTime.getTime() + gMin * 60000);
-      }
-    } else if (arriveTime) {
-      currentTime = arriveTime;
-    }
-  }
+    return { ...c, depFboInfo, arrFboInfo };
+  });
 
   // Build title with date range
   const firstDept = computed[0]?.departTime;
@@ -297,17 +356,38 @@ async function loadAndRender() {
     }
   }
 
+  // Build edit link URL from saved state
+  const editParams = new URLSearchParams(p);
+  editParams.set('load', tripId);
+  const editUrl = `index.html?${editParams.toString()}`;
+
+  // Build Google Calendar link
+  const paxUrl = location.href;
+  let gcalHtml = '';
+  if (firstDept && lastArr) {
+    const gcalFmt = d => d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+    const gcalParams = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: `${trip.route}`,
+      dates: `${gcalFmt(firstDept)}/${gcalFmt(lastArr)}`,
+      details: `Live itinerary: ${paxUrl}`,
+    });
+    const gcalUrl = `https://calendar.google.com/calendar/render?${gcalParams.toString()}`;
+    gcalHtml = ` · <a href="${esc(gcalUrl)}" target="_blank">Add to Google Calendar</a>`;
+  }
+
   // Render
   const heading = 'N785QS' + (titleDate ? ' ' + titleDate : '') + ' Itinerary';
   let html = `<h1>${esc(heading)}</h1>`;
   html += `<div class="trip-meta">${esc(trip.route)}</div>`;
+  html += `<div class="edit-link"><a href="${esc(editUrl)}">Edit trip</a>${gcalHtml}</div>`;
 
   for (let i = 0; i < computed.length; i++) {
     const c = computed[i];
     const { leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime, depFboInfo, arrFboInfo } = c;
 
     html += `<div class="leg">`;
-    html += `<div class="leg-header">Leg ${i + 1}${leg.pax ? ` — ${leg.pax} passenger${leg.pax > 1 ? 's' : ''}` : ''}</div>`;
+    html += `<div class="leg-header">Leg ${i + 1}${leg.pax ? ` \u2014 ${leg.pax} passenger${leg.pax > 1 ? 's' : ''}` : ''}</div>`;
 
     html += `<div class="leg-body">`;
 
@@ -333,7 +413,7 @@ async function loadAndRender() {
     html += `</div>`;
 
     // Block time column
-    html += `<div class="leg-mid"><span class="block-time">${blockMin != null ? fmtDur(blockMin) : '—'}</span></div>`;
+    html += `<div class="leg-mid"><span class="block-time">${blockMin != null ? fmtDur(blockMin) : '\u2014'}</span></div>`;
 
     // Arrival column
     html += `<div class="leg-col">`;
