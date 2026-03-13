@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trip Itinerary</title>
+<title>Trip Schedule</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #fff; color: #1a1a1a; line-height: 1.6; padding: 2rem; max-width: 720px; margin: 0 auto; }
@@ -15,10 +15,7 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 .leg-body { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; }
 .leg-col { padding: 0.75rem 1rem; }
 .leg-mid { padding: 0.75rem 0.5rem; display: flex; align-items: center; justify-content: center; border-left: 1px solid #e0e0e0; border-right: 1px solid #e0e0e0; }
-.leg-mid .block-time { font-family: 'SF Mono', 'Menlo', monospace; font-size: 0.85rem; font-weight: 600; color: #666; }
-.leg-col + .leg-mid { }
-.leg-col:last-child { }
-.leg-col h3 { font-size: 0.7rem; text-transform: uppercase; color: #999; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+.leg-mid .arrow { font-size: 1.2rem; color: #999; }
 .airport-code { font-size: 1.3rem; font-weight: 700; font-family: 'SF Mono', 'Menlo', monospace; }
 .airport-name { font-size: 0.8rem; color: #666; }
 .time-display { margin-top: 0.5rem; }
@@ -27,19 +24,10 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 .time-date { color: #999; font-size: 0.75rem; }
 .fbo-info { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #eee; }
 .fbo-name { font-weight: 600; font-size: 0.82rem; }
-.fbo-detail { font-size: 0.8rem; color: #666; }
-.fbo-detail a { color: #2563eb; text-decoration: none; }
-.trip-details { font-size: 0.85rem; color: #444; margin-bottom: 1rem; }
-.trip-details span { margin-right: 1.5rem; }
-.trip-details strong { color: #1a1a1a; }
-.leg-extras { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #eee; font-size: 0.8rem; color: #666; }
-.leg-extras span { margin-right: 1rem; }
 .no-trip { text-align: center; padding: 3rem; color: #999; }
 .loading { text-align: center; padding: 3rem; color: #999; }
-@media print {
-  body { padding: 0.5rem; }
-  .updated { display: none; }
-}
+.version-label { color: #999; font-size: 0.78rem; margin-bottom: 1rem; }
+@media print { body { padding: 0.5rem; } .updated { display: none; } }
 @media (max-width: 500px) {
   body { padding: 1rem; }
   .leg-body { grid-template-columns: 1fr; }
@@ -62,19 +50,6 @@ function haversine(lat1, lon1, lat2, lon2) {
   const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
   const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return 2 * R_NM * Math.asin(Math.sqrt(a));
-}
-function bearing(lat1, lon1, lat2, lon2) {
-  const dLon = toRad(lon2-lon1), la1 = toRad(lat1), la2 = toRad(lat2);
-  const y = Math.sin(dLon)*Math.cos(la2);
-  const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
-  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
-}
-
-function fmtDur(min) {
-  if (min == null || min < 0) return '—';
-  const total = Math.round(min);
-  const h = Math.floor(total/60), m = total % 60;
-  return `${h}:${m.toString().padStart(2,'0')}`;
 }
 
 function fmtInTz(date, tz) {
@@ -130,10 +105,12 @@ async function loadAndRender() {
     return;
   }
 
-  // Load airports + trip data in parallel
+  const versionParam = params.get('version');
+  let tripUrl = `trips.php?id=${encodeURIComponent(tripId)}`;
+
   const [aptData, tripResp] = await Promise.all([
     fetch('airports.json').then(r => r.json()),
-    fetch(`trips.php?id=${encodeURIComponent(tripId)}`),
+    fetch(tripUrl),
   ]);
 
   for (const a of aptData) aptIdx[a.icao] = a;
@@ -146,6 +123,20 @@ async function loadAndRender() {
   if (trip.error) {
     document.getElementById('content').innerHTML = `<div class="no-trip">${esc(trip.error)}</div>`;
     return;
+  }
+
+  // If viewing a specific old version, fetch that state
+  if (versionParam) {
+    try {
+      const vResp = await fetch(`trips.php?id=${encodeURIComponent(tripId)}&version=${versionParam}`);
+      const vData = await vResp.json();
+      if (vData.state) {
+        trip.state = vData.state;
+        trip.version = +versionParam;
+        trip.saved = vData.saved_at;
+        trip.savedBy = vData.saved_by;
+      }
+    } catch {}
   }
 
   const p = trip.state;
@@ -172,13 +163,7 @@ async function loadAndRender() {
   const dfbos = p.df ? p.df.split('|') : [];
   const afbos = p.af ? p.af.split('|') : [];
   const pxCounts = p.px ? p.px.split(',') : [];
-  const foods = p.fd ? p.fd.split('|') : [];
-  const transports = p.gt ? p.gt.split('|') : [];
   const paxNamesRaw = p.pn ? p.pn.split('|') : [];
-  const tripPilot = p.pi || 'David Scheinman';
-  const tripPilotPhone = p.pp || '650-387-1111';
-  const tripPurpose = p.pu || '';
-  const tripCargo = p.cg || '';
 
   const legs = pairs.map((pair, i) => {
     const [dep, arr] = pair.split('-');
@@ -188,20 +173,17 @@ async function loadAndRender() {
       nextDep: deps[i] || '',
       nextDepDate: depDates[i] || '',
       depFbo: dfbos[i] || '',
+      arrFbo: afbos[i] || '',
       pax: pxCounts[i] ? +pxCounts[i] : 0,
       paxNames: paxNamesRaw[i] ? paxNamesRaw[i].split(';').filter(Boolean) : [],
-      arrFbo: afbos[i] || '',
-      food: foods[i] || '',
-      groundTransport: transports[i] || '',
     };
   });
 
-  // Enforce dep = previous arr
   for (let i = 1; i < legs.length; i++) {
     if (legs[i-1].arr) legs[i].dep = legs[i-1].arr;
   }
 
-  // Pre-fetch FBOs for all airports with FBO selections
+  // Pre-fetch FBOs
   const fboIcaos = new Set();
   for (let i = 0; i < legs.length; i++) {
     if (i === 0 && legs[i].depFbo && legs[i].dep) fboIcaos.add(legs[i].dep);
@@ -230,16 +212,12 @@ async function loadAndRender() {
     if (distNm != null && profile.speed > 0) {
       const cruiseGs = profile.speed;
       if (profile.climbSpeed && profile.descentSpeed && profile.phaseMin) {
-        const climbGs = profile.climbSpeed;
-        const descentGs = profile.descentSpeed;
-        const climbDist = climbGs * (profile.phaseMin / 60);
-        const descentDist = descentGs * (profile.phaseMin / 60);
+        const climbDist = profile.climbSpeed * (profile.phaseMin / 60);
+        const descentDist = profile.descentSpeed * (profile.phaseMin / 60);
         if (distNm <= climbDist + descentDist) {
-          const avgGs = (climbGs + descentGs) / 2;
-          flightMin = (distNm / avgGs) * 60;
+          flightMin = (distNm / ((profile.climbSpeed + profile.descentSpeed) / 2)) * 60;
         } else {
-          const cruiseDist = distNm - climbDist - descentDist;
-          flightMin = profile.phaseMin + (cruiseDist / cruiseGs) * 60 + profile.phaseMin;
+          flightMin = profile.phaseMin + ((distNm - climbDist - descentDist) / cruiseGs) * 60 + profile.phaseMin;
         }
       } else {
         flightMin = (distNm / cruiseGs) * 60;
@@ -253,8 +231,6 @@ async function loadAndRender() {
       arriveTime = new Date(currentTime.getTime() + blockMin * 60000);
     }
 
-    // Find selected FBO info
-    // For legs after the first, departure FBO = previous leg's arrival FBO (same airport)
     let depFboInfo = null, arrFboInfo = null;
     const depFboName = (i === 0) ? leg.depFbo : (legs[i-1]?.arrFbo || '');
     if (depFboName && fboCache[leg.dep]) {
@@ -264,9 +240,9 @@ async function loadAndRender() {
       arrFboInfo = fboCache[leg.arr].find(f => f.name === leg.arrFbo) || null;
     }
 
-    computed.push({ leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime, depFboInfo, arrFboInfo });
+    computed.push({ leg, depApt, arrApt, depTz, arrTz, departTime, arriveTime, depFboInfo, arrFboInfo });
 
-    // Advance clock for ground time
+    // Advance clock
     if (i < legs.length - 1 && arriveTime) {
       const nextLeg = legs[i+1];
       const nextDepApt = aptIdx[nextLeg.dep];
@@ -288,7 +264,7 @@ async function loadAndRender() {
     }
   }
 
-  // Build title with date range
+  // Build date range for title
   const firstDept = computed[0]?.departTime;
   const lastArr = computed[computed.length-1]?.arriveTime;
   const firstDepTz = computed[0]?.depTz || 'UTC';
@@ -300,42 +276,39 @@ async function loadAndRender() {
     if (lastArr) {
       const endMonth = lastArr.toLocaleString('en-US', { timeZone: lastArrTz, month:'long' });
       const endDay = lastArr.toLocaleString('en-US', { timeZone: lastArrTz, day:'numeric' });
-      if (startMonth === endMonth && startDay === endDay) {
-        titleDate = `${startMonth} ${startDay}`;
-      } else if (startMonth === endMonth) {
-        titleDate = `${startMonth} ${startDay} - ${endDay}`;
-      } else {
-        titleDate = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
-      }
+      if (startMonth === endMonth && startDay === endDay) titleDate = `${startMonth} ${startDay}`;
+      else if (startMonth === endMonth) titleDate = `${startMonth} ${startDay} - ${endDay}`;
+      else titleDate = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
     } else {
       titleDate = `${startMonth} ${startDay}`;
     }
   }
 
-  // Render
-  const heading = 'N785QS' + (titleDate ? ' ' + titleDate : '') + ' Itinerary';
+  // Render — stripped down: name, date, airports, FBO names, departure time only
+  const heading = (trip.name || 'Trip') + (titleDate ? ' — ' + titleDate : '');
+  const now = new Date();
+  const generated = now.toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
   let html = `<h1>${esc(heading)}</h1>`;
   html += `<div class="trip-meta">${esc(trip.route)}</div>`;
-  html += `<div class="trip-details"><span><strong>Lead Pilot:</strong> ${esc(tripPilot)}</span><span><a href="tel:${esc(tripPilotPhone)}">${esc(tripPilotPhone)}</a></span></div>`;
+  html += `<div class="version-label">Version ${trip.version || 1}</div>`;
+  html += `<div class="updated"><strong>Generated ${generated}</strong></div>`;
 
   for (let i = 0; i < computed.length; i++) {
     const c = computed[i];
-    const { leg, depApt, arrApt, depTz, arrTz, blockMin, departTime, arriveTime, depFboInfo, arrFboInfo } = c;
+    const { leg, depApt, arrApt, depTz, arrTz, departTime, depFboInfo, arrFboInfo } = c;
 
     html += `<div class="leg">`;
     const namedPax = leg.paxNames.filter(n => n);
     let paxCount = '';
     if (leg.pax) paxCount = ` — ${leg.pax} passenger${leg.pax > 1 ? 's' : ''}`;
-    html += `<div class="leg-header">Leg ${i + 1}${paxCount}</div>`;
+    html += `<div class="leg-header">Leg ${i + 1}${esc(paxCount)}</div>`;
     if (namedPax.length) {
       html += `<div style="padding:0.3rem 1rem;font-size:0.82rem;color:#444;border-bottom:1px solid #e0e0e0">${namedPax.map(n => esc(n)).join(', ')}</div>`;
     }
-
     html += `<div class="leg-body">`;
 
-    // Departure column
+    // Departure
     html += `<div class="leg-col">`;
-    html += `<h3>Depart</h3>`;
     html += `<div class="airport-code">${esc(leg.dep)}</div>`;
     if (depApt) html += `<div class="airport-name">${esc(depApt.city)}${depApt.state ? ', ' + esc(depApt.state) : ''}</div>`;
     if (departTime && depTz) {
@@ -346,47 +319,23 @@ async function loadAndRender() {
       html += `</div>`;
     }
     if (depFboInfo) {
-      html += `<div class="fbo-info">`;
-      html += `<div class="fbo-name">${esc(depFboInfo.name)}</div>`;
-      if (depFboInfo.address) html += `<div class="fbo-detail"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(depFboInfo.address)}" target="_blank">${esc(depFboInfo.address)}</a></div>`;
-      if (depFboInfo.phone) html += `<div class="fbo-detail"><a href="tel:${esc(depFboInfo.phone)}">${esc(depFboInfo.phone)}</a></div>`;
-      html += `</div>`;
+      html += `<div class="fbo-info"><div class="fbo-name">${esc(depFboInfo.name)}</div></div>`;
     }
     html += `</div>`;
 
-    // Block time column
-    html += `<div class="leg-mid"><span class="block-time">${blockMin != null ? fmtDur(blockMin) : '—'}</span></div>`;
+    // Arrow
+    html += `<div class="leg-mid"><span class="arrow">→</span></div>`;
 
-    // Arrival column
+    // Arrival
     html += `<div class="leg-col">`;
-    html += `<h3>Arrive</h3>`;
     html += `<div class="airport-code">${esc(leg.arr)}</div>`;
     if (arrApt) html += `<div class="airport-name">${esc(arrApt.city)}${arrApt.state ? ', ' + esc(arrApt.state) : ''}</div>`;
-    if (arriveTime && arrTz) {
-      const t = fmtInTz(arriveTime, arrTz);
-      html += `<div class="time-display">`;
-      html += `<span class="time-primary">${t.time}</span> <span class="time-tz">${t.abbr}</span>`;
-      html += `<div class="time-date">${fmtDate(arriveTime, arrTz)}</div>`;
-      html += `</div>`;
-    }
     if (arrFboInfo) {
-      html += `<div class="fbo-info">`;
-      html += `<div class="fbo-name">${esc(arrFboInfo.name)}</div>`;
-      if (arrFboInfo.address) html += `<div class="fbo-detail"><a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(arrFboInfo.address)}" target="_blank">${esc(arrFboInfo.address)}</a></div>`;
-      if (arrFboInfo.phone) html += `<div class="fbo-detail"><a href="tel:${esc(arrFboInfo.phone)}">${esc(arrFboInfo.phone)}</a></div>`;
-      html += `</div>`;
+      html += `<div class="fbo-info"><div class="fbo-name">${esc(arrFboInfo.name)}</div></div>`;
     }
     html += `</div>`;
 
-    html += `</div>`;
-
-    html += `<div class="leg-extras" style="padding:0.5rem 1rem;border-top:1px solid #e0e0e0">`;
-    html += leg.food ? `<span>🍽 ${esc(leg.food)}</span>` : `<span style="color:#999">🍽 No food arranged</span>`;
-    html += leg.groundTransport ? `<span>🚗 ${esc(leg.groundTransport)}</span>` : `<span style="color:#999">🚗 No ground transport arranged</span>`;
-    html += `</div>`;
-
-    html += `</div>`;
-
+    html += `</div></div>`;
   }
 
   const saved = trip.saved ? new Date(trip.saved) : null;
@@ -398,9 +347,7 @@ async function loadAndRender() {
   document.title = heading;
 }
 
-// Initial load
 loadAndRender();
-// Auto-refresh every 60 seconds
 setInterval(loadAndRender, 60000);
 </script>
 </body>

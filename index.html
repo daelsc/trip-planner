@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Trip Planner</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.5; font-size: 14px; }
@@ -47,6 +48,10 @@ button:hover { background: #2563eb; }
 .leg-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #1e293b; vertical-align: top; }
 .leg-table tr:hover { background: rgba(30,41,59,0.5); }
 .leg-row td { white-space: nowrap; }
+.leg-row { cursor: grab; }
+.leg-row.dragging { opacity: 0.4; }
+.leg-row.drag-over { border-top: 2px solid #3b82f6; }
+.drag-handle { cursor: grab; color: #475569; margin-right: 0.3rem; user-select: none; }
 
 /* ICAO autocomplete */
 .icao-wrapper { position: relative; display: inline-block; }
@@ -141,6 +146,36 @@ button:hover { background: #2563eb; }
 .ff-dialog .ff-cancel { background: #334155; color: #cbd5e1; }
 .ff-dialog .ff-cancel:hover { background: #475569; }
 
+/* Trip details row */
+.trip-details-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 0.4rem 1rem; display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.trip-details-bar label { font-size: 0.78rem; color: #94a3b8; }
+.trip-details-bar input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.3rem 0.45rem; border-radius: 4px; font-size: 0.82rem; }
+.trip-details-bar input[type="text"] { width: 20rem; }
+
+/* Per-leg inline inputs */
+.leg-extra-input { background: #0f172a; border: 1px solid #334155; color: #94a3b8; padding: 0.15rem 0.3rem; border-radius: 3px; font-size: 0.68rem; width: 120px; margin-top: 2px; }
+.leg-extra-input:focus { outline: none; border-color: #3b82f6; color: #e2e8f0; }
+
+/* Version history */
+.history-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 400; }
+.history-dialog { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.5rem; width: 420px; max-height: 80vh; overflow-y: auto; }
+.history-dialog h3 { font-size: 1rem; margin-bottom: 1rem; color: #e2e8f0; }
+.history-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #1e293b; font-size: 0.85rem; }
+.history-item:hover { background: rgba(51,65,85,0.3); }
+.history-item .ver-num { color: #818cf8; font-weight: 600; margin-right: 0.5rem; }
+.history-item .ver-date { color: #94a3b8; }
+.history-item .ver-who { color: #64748b; font-size: 0.75rem; }
+.history-banner { background: #1e293b; border: 1px solid #818cf8; border-radius: 6px; padding: 0.5rem 1rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; color: #a5b4fc; }
+
+/* Inline version history */
+.hist-item { background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 0.5rem 0.75rem; margin-bottom: 0.4rem; font-size: 0.82rem; display: flex; justify-content: space-between; align-items: center; }
+.hist-item .hi-ver { color: #818cf8; font-weight: 600; margin-right: 0.5rem; }
+.hist-item .hi-date { color: #64748b; font-size: 0.75rem; }
+.hist-item .hi-who { color: #475569; font-size: 0.72rem; margin-left: 0.5rem; }
+.hist-item .hi-changes { color: #94a3b8; font-size: 0.75rem; margin-top: 0.15rem; }
+.hist-item .hi-left { min-width: 0; }
+.hist-empty { color: #475569; font-size: 0.82rem; }
+
 /* Toast */
 .toast { position: fixed; top: 1rem; right: 1rem; background: #22c55e; color: white; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.82rem; opacity: 0; transition: opacity 0.3s; z-index: 300; pointer-events: none; }
 .toast.show { opacity: 1; }
@@ -175,6 +210,88 @@ button:hover { background: #2563eb; }
   .settings-bar { gap: 0.4rem; }
   .leg-table { font-size: 0.75rem; }
 }
+
+/* Mobile label (hidden on desktop) */
+.mobile-label { display: none; }
+/* Hamburger button (hidden on desktop) */
+.mobile-menu-btn { display: none; }
+
+@media (max-width: 640px) {
+  /* ── Settings bar: sticky strip + drawer ── */
+  .settings-bar { position: sticky; top: 0; z-index: 50; flex-wrap: wrap; padding: 0.5rem 0.75rem; gap: 0.5rem; }
+  .settings-bar h1 { font-size: 1rem; flex: 1; }
+  .mobile-menu-btn { display: inline-flex; align-items: center; justify-content: center; font-size: 1.1rem; width: 2rem; height: 2rem; padding: 0; }
+  .settings-drawer { display: none; width: 100%; flex-wrap: wrap; gap: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #334155; margin-top: 0.25rem; }
+  .settings-drawer.open { display: flex; }
+
+  /* Trip details bar */
+  .trip-details-bar { flex-direction: column; gap: 0.4rem; padding: 0.5rem 0.75rem; }
+  .trip-details-bar .sg { flex-wrap: wrap; }
+  .trip-details-bar input[type="text"] { width: 100% !important; }
+  #cargoDetails { flex-wrap: wrap; }
+  #cargoDetails input { width: auto; flex: 1; min-width: 6rem; }
+
+  /* ── Container ── */
+  .container { padding: 0.5rem; }
+
+  /* ── Leg table → cards ── */
+  .leg-table { border-collapse: separate; border-spacing: 0; }
+  .leg-table thead { display: none; }
+  .leg-table tr.leg-row { display: block; background: #1e293b; border: 1px solid #334155; border-radius: 8px; margin-bottom: 0.75rem; padding: 0.75rem; position: relative; }
+  .leg-table tr.leg-row td { display: block; padding: 0.2rem 0; border: none; white-space: normal; }
+  .leg-row .td-num { font-weight: 700; font-size: 0.9rem; color: #818cf8; margin-bottom: 0.25rem; }
+  .leg-row .td-arrow { display: none; }
+  .leg-row .td-from, .leg-row .td-to { display: inline-block; width: 48%; vertical-align: top; }
+  .leg-row .td-to { text-align: right; }
+  .leg-row .td-from::before { content: 'FROM'; display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.1rem; }
+  .leg-row .td-to::before { content: 'TO'; display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.1rem; }
+  .leg-row .td-dist, .leg-row .td-flight, .leg-row .td-block { display: inline-block; width: 32%; text-align: center; padding: 0.4rem 0; border-top: 1px solid #334155; margin-top: 0.3rem; }
+  .mobile-label { display: inline; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+  .leg-row .td-depart, .leg-row .td-arrive { display: inline-block; width: 48%; vertical-align: top; padding-top: 0.4rem; border-top: 1px solid #334155; margin-top: 0.3rem; }
+  .leg-row .td-pax { border-top: 1px solid #334155; margin-top: 0.3rem; padding-top: 0.4rem; }
+  .leg-row .td-pax::before { content: 'Passengers'; display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.1rem; }
+  .leg-row .td-food { border-top: 1px solid #334155; margin-top: 0.3rem; padding-top: 0.4rem; }
+  .leg-row .td-food::before { content: 'Food / Transport'; display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.1rem; }
+  .leg-row .td-actions { position: absolute; top: 0.5rem; right: 0.5rem; }
+
+  /* ── Ground/rest rows ── */
+  .ground-row, .show-row, .rest-block { display: block; margin-bottom: 0.25rem; }
+  .ground-row td, .show-row td, .rest-block td { display: block; text-align: center; border: none; }
+
+  /* ── Touch targets ── */
+  .icao-input { width: 100%; font-size: 16px; padding: 0.4rem; min-height: 44px; }
+  .icao-wrapper { display: block; }
+  .fbo-select { max-width: 100%; font-size: 0.78rem; min-height: 36px; }
+  .leg-extra-input { width: 100%; font-size: 14px; padding: 0.3rem; min-height: 36px; }
+  .pax-select { min-height: 36px; font-size: 14px !important; }
+  .dep-override { font-size: 16px; min-height: 44px; width: 5rem; }
+  .date-input { font-size: 16px; min-height: 44px; width: 100%; }
+  .btn-icon { width: 2.2rem; height: 2.2rem; font-size: 0.85rem; }
+  button { min-height: 36px; }
+
+  /* ── Autocomplete ── */
+  .ac-list { min-width: 0; width: calc(100vw - 2rem); max-width: 360px; max-height: 250px; }
+  .ac-item { padding: 0.6rem 0.75rem; font-size: 0.85rem; }
+
+  /* ── Add leg area ── */
+  .legs-section > div:last-child { flex-direction: column; }
+  .legs-section > div:last-child input { width: 100% !important; }
+
+  /* ── Crew tables ── */
+  .crew-table thead { display: none; }
+  .crew-table tr { display: block; background: #1e293b; border: 1px solid #334155; border-radius: 6px; margin-bottom: 0.5rem; padding: 0.5rem; }
+  .crew-table td { display: block; padding: 0.15rem 0; border: none; }
+
+  /* ── Dialogs fullscreen ── */
+  .ff-dialog, .history-dialog { width: 100%; max-width: 100%; height: auto; max-height: 90vh; border-radius: 8px 8px 0 0; }
+
+  /* ── Home screen ── */
+  .home-screen { padding: 0 0.5rem; margin: 1rem auto; }
+  .home-trip { padding: 0.75rem; }
+
+  /* ── Trips dropdown ── */
+  .trips-menu { min-width: 240px; right: auto; left: 0; }
+}
 </style>
 </head>
 <body>
@@ -184,8 +301,12 @@ button:hover { background: #2563eb; }
   <div class="login-box">
     <h2>Trip Planner</h2>
     <div class="login-err" id="loginErr" style="display:none"></div>
-    <input type="password" id="loginPass" placeholder="Password" autofocus>
-    <button onclick="doLogin()">Log In</button>
+    <div id="googleSignIn"></div>
+    <div id="passwordFallback" style="display:none;margin-top:0.75rem">
+      <input type="password" id="loginPass" placeholder="Password">
+      <button onclick="doLogin()">Log In</button>
+    </div>
+    <a href="#" id="showPasswordLink" onclick="document.getElementById('passwordFallback').style.display='';document.getElementById('showPasswordLink').style.display='none';document.getElementById('loginPass').focus();return false" style="font-size:0.75rem;color:#64748b;margin-top:0.75rem;display:inline-block">Use password instead</a>
   </div>
 </div>
 
@@ -216,51 +337,73 @@ button:hover { background: #2563eb; }
     </label>
     <span class="view-label" id="viewLabelCrew" onclick="$('viewMode').checked=true;recalc()">Crew</span>
   </div>
-  <div class="sg">
-    <label>Aircraft</label>
-    <select id="aircraft">
-      <option value="G550">G550</option>
-      <option value="PC12">PC-12</option>
-      <option value="custom">Custom</option>
-    </select>
-  </div>
-  <div class="sg crew-only">
-    <label>Climb</label><input type="number" id="pClimb" placeholder="300" min="50" max="999" title="Climb speed (kts)" style="width:3.5rem">
-    <label>Cruise</label><input type="number" id="pSpeed" placeholder="470" min="50" max="999" title="Cruise speed (kts)" style="width:3.5rem">
-    <label>Desc</label><input type="number" id="pDescent" placeholder="300" min="50" max="999" title="Descent speed (kts)" style="width:3.5rem">
-    <label>FL</label><input type="number" id="pAlt" placeholder="400" min="10" max="600" title="Cruise altitude (flight level)" style="width:4rem">
-  </div>
-  <div class="sg crew-only">
-    <label>Start</label><input type="number" id="pStartup" placeholder="15" min="0" max="99" title="Engine startup (min)" style="width:3.5rem">
-    <label>Shut</label><input type="number" id="pShutdown" placeholder="10" min="0" max="99" title="Engine shutdown (min)" style="width:3.5rem">
-  </div>
-  <div class="sg crew-only">
-    <label>Crew</label>
-    <select id="crew">
-      <option value="2" selected>2 Pilots</option>
-      <option value="1">1 Pilot</option>
-    </select>
-  </div>
-  <div class="sg crew-only">
-    <label>Show</label>
-    <input type="number" id="showTime" placeholder="90" min="0" max="300" title="Crew show/report time before departure (min)" style="width:3.5rem">
-    <span class="dim">min</span>
-  </div>
-  <input type="hidden" id="startTime">
-  <input type="hidden" id="startDateStore">
-  <input type="hidden" id="startTimeStore">
-  <button class="btn-sm" onclick="sharePaxLink()">Share with Passengers</button>
   <button class="btn-sm" onclick="saveTrip()">Save</button>
-  <button class="btn-sm crew-only" onclick="try{pushToForeFlight();}catch(e){alert('Error: '+e.message);}">Push to ForeFlight</button>
-  <div class="trips-dropdown">
-    <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
-    <div class="trips-menu" id="tripsMenu"></div>
+  <button class="btn-sm btn-secondary mobile-menu-btn" onclick="toggleMobileSettings()">&#9776;</button>
+  <div class="settings-drawer" id="settingsDrawer">
+    <div class="sg">
+      <label>Aircraft</label>
+      <select id="aircraft">
+        <option value="G550">G550</option>
+        <option value="PC12">PC-12</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div class="sg crew-only">
+      <label>Climb</label><input type="number" id="pClimb" placeholder="300" min="50" max="999" title="Climb speed (kts)" style="width:3.5rem">
+      <label>Cruise</label><input type="number" id="pSpeed" placeholder="470" min="50" max="999" title="Cruise speed (kts)" style="width:3.5rem">
+      <label>Desc</label><input type="number" id="pDescent" placeholder="300" min="50" max="999" title="Descent speed (kts)" style="width:3.5rem">
+      <label>FL</label><input type="number" id="pAlt" placeholder="400" min="10" max="600" title="Cruise altitude (flight level)" style="width:4rem">
+    </div>
+    <div class="sg crew-only">
+      <label>Start</label><input type="number" id="pStartup" placeholder="15" min="0" max="99" title="Engine startup (min)" style="width:3.5rem">
+      <label>Shut</label><input type="number" id="pShutdown" placeholder="10" min="0" max="99" title="Engine shutdown (min)" style="width:3.5rem">
+    </div>
+    <div class="sg crew-only">
+      <label>Crew</label>
+      <select id="crew">
+        <option value="2" selected>2 Pilots</option>
+        <option value="1">1 Pilot</option>
+      </select>
+    </div>
+    <div class="sg crew-only">
+      <label>Show</label>
+      <input type="number" id="showTime" placeholder="90" min="0" max="300" title="Crew show/report time before departure (min)" style="width:3.5rem">
+      <span class="dim">min</span>
+    </div>
+    <input type="hidden" id="startTime">
+    <input type="hidden" id="startDateStore">
+    <input type="hidden" id="startTimeStore">
+    <button class="btn-sm" onclick="sharePaxLink()">Share with Passengers</button>
+    <button class="btn-sm" onclick="sharePlannerLink()">Share with Planner</button>
+    <button class="btn-sm crew-only" onclick="try{pushToForeFlight();}catch(e){alert('Error: '+e.message);}">Push to ForeFlight</button>
+    <div class="trips-dropdown">
+      <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
+      <div class="trips-menu" id="tripsMenu"></div>
+    </div>
+    <button class="btn-secondary btn-sm" onclick="goHome()">Home</button>
   </div>
-  <button class="btn-secondary btn-sm" onclick="goHome()">Home</button>
+</div>
+<div class="trip-details-bar">
+  <div class="sg"><label>Lead Pilot</label><input type="text" id="tripPilot" value="David Scheinman" placeholder="Pilot name..." style="width:12rem" onchange="if(!this.value){this.value='David Scheinman';$('tripPilotPhone').value='650-387-1111';}else if(this.value==='David Scheinman'){$('tripPilotPhone').value='650-387-1111';}else{$('tripPilotPhone').value='';}"></div>
+  <div class="sg"><label>Phone</label><input type="text" id="tripPilotPhone" value="650-387-1111" placeholder="Phone..." style="width:9rem"></div>
+  <div class="sg"><label>Purpose</label><input type="text" id="tripPurpose" placeholder="Trip purpose..." style="width:16rem"></div>
+  <div class="sg"><label>Cargo beyond typical suitcases?</label>
+    <select id="tripCargoToggle" onchange="$('cargoDetails').style.display=this.value==='yes'?'flex':'none'" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.3rem 0.45rem;border-radius:4px;font-size:0.82rem">
+      <option value="" disabled selected>Select...</option><option value="no">No</option><option value="yes">Yes</option>
+    </select>
+    <span id="cargoDetails" style="display:none;gap:0.4rem;align-items:center">
+      <input type="text" id="tripCargoDesc" placeholder="Describe cargo..." style="width:14rem">
+      <label>Weight</label><input type="text" id="tripCargoWeight" placeholder="lbs" style="width:5rem">
+    </span>
+  </div>
 </div>
 
-
 <div class="container">
+  <div id="versionBanner" class="history-banner" style="display:none">
+    <span id="versionBannerText"></span>
+    <button class="btn-sm" onclick="restoreVersion()">Restore</button>
+    <button class="btn-sm btn-secondary" onclick="cancelVersionView()">Back to current</button>
+  </div>
 
   <div class="legs-section">
     <h2>Trip Legs</h2>
@@ -275,6 +418,7 @@ button:hover { background: #2563eb; }
           <th>Flight</th>
           <th>Block</th>
           <th>Pax</th>
+          <th>Food / Transport</th>
           <th>Depart</th>
           <th>Arrive</th>
           <th></th>
@@ -322,6 +466,11 @@ button:hover { background: #2563eb; }
       </thead>
       <tbody id="paxCrewBody"></tbody>
     </table>
+  </div>
+
+  <div id="historySection" style="display:none;margin-top:1.5rem">
+    <h2 style="color:#94a3b8;text-transform:uppercase;letter-spacing:0.05em;font-size:0.75rem;font-weight:600;margin-bottom:0.5rem">Version History</h2>
+    <div id="historyBody"></div>
   </div>
 </div>
 </div><!-- /plannerView -->
@@ -416,6 +565,10 @@ function getShowMin() {
   return numOr($('showTime').value, b.show);
 }
 
+function toggleMobileSettings() {
+  $('settingsDrawer').classList.toggle('open');
+}
+
 function updatePlaceholders() {
   const b = PROFILES[$('aircraft').value] || PROFILES.custom;
   $('pClimb').placeholder = b.climbSpeed || '—';
@@ -492,6 +645,12 @@ function timeToDate(timeStr, refDate, tz) {
 }
 
 
+// ── CAA Preferred FBOs ──
+const CAA_FBOS = {"KPQL":"Southern Sky Aviation","KLUK":"Waypoint Aviation","KCYS":"Legend AeroServe","KCWI":"Clinton Municipal Airport","CZBB":"Boundary Bay Air Services","KGKY":"Arlington Air Center","KDVT":"Cutter Aviation","KSPF":"Eagle Aviation, LLC.","KLMT":"RMC Aviation","KSBY":"Azure Flight Support","KATW":"Appleton Flight Center","KMHR":"Mather Jet Center","KBPI":"Joint Big Piney","KPVW":"Tradewind FBO","KHOU":"Wilson Air Center","F82":"ClearTech Aviation","KBUR":"Hollywood Burbank Jet Center","KCAE":"Columbia Aviation","KABQ":"Cutter Aviation","KPIE":"Sheltair","KMLB":"Sheltair","KLOZ":"London-Corbin Airport","KVPC":"Phoenix Air","KRNO":"Stellar Aviation","KCSV":"Azure Flight Support","KMQY":"Azure Flight Support","KSJT":"San Angelo Jet Center","KAXH":"Houston Southwest Airport","KABR":"Hangar 9","KEVW":"Evanston Aviation","CYYC":"Signature Aviation","LSZH":"Jet Aviation","KCHA":"Wilson Air Center","KADS":"Million Air","KJNX":"Johnston Regional Airport","KPUB":"Freeman Jet Center","KGEG":"Aero Center","LSGG":"Jet Aviation","KRVS":"Christiansen Jet Center","KTUL":"United States Aviation","TISX":"Bohlke International Aviation","KDAY":"PremierFBO","KVRB":"Sun Aviation, Inc.","KLCI":"Emerson Aviation","KHDC":"Top Gun Hammond","KSRB":"Upper Cumberland Regional Jet Center","KGPT":"Million Air","KGCM":"Claremore Regional Airport","KBDR":"Three Wing Aviation Group, LLC","KAUS":"Million Air","KSPK":"Utah Aviation","KTDW":"Tradewind FBO","KTMB":"Reliance Aviation","KUVA":"Uvalde Flight Center","EGSS":"Inflite the Jet Centre","KAFO":"Eagle Jet Center","I68":"WCA Jet Center","KCRQ":"Carlsbad Jet Center","KVDF":"Skyport Aviation","KHZY":"Northeast Ohio Regional","X60":"City of Williston","KOAK":"KaiserAir Oakland Jet Center","MYNN":"Jet Nassau","KGSP":"Cerulean Aviation","KPDK":"Aero Center","M40":"Monroe County Airport","KCGI":"Cape Aviation","KSUS":"Million Air","KYIP":"Avflight","KGPH":"APEX Aero Center","KFYV":"Fayetteville Aviation Services","EGGW":"Signature Aviation","KFSD":"Maverick Air Center","KOKV":"Winchester Aviation","KORL":"Sheltair","KSUA":"APP Jet Center","KMEM":"Wilson Air Center","KFCM":"Thunderbird Aviation","KBOI":"Jackson Jet Center","KBIS":"Executive Air Taxi Corporation","KRBD":"Ambassador Jet Center","KRUE":"Russellville Regional Airport","KBTR":"Velocity BTR Jet Center","KHRL":"Sun Valley Aviation","KOJC":"Executive Aircraft Service","KSFB":"Million Air","KHFY":"Indy South Greenwood Airport","KSFF":"Aero Center","KTTN":"FlightServ","KBMG":"Cook Aviation","KGTU":"Cutter Aviation","KHKS":"Skyport Aviation","KISM":"Velocity FBO Network","KHEF":"APP Jet Center","KTEB":"Signature Aviation West","KWRL":"Hellyer Aviation","KCCO":"CCO Airport Services","KRWI":"Rocky Mount Wilson Regional Airport","KHSI":"Hastings Air","KGRR":"Avflight","KCXY":"Skyport Aviation","KCPS":"Jet Aviation","KCMH":"Signature Aviation","CYVR":"Million Air","M22":"Explore Aviation","KBZN":"Jet Aviation","KRQO":"El Reno Flight Center","KCXO":"General Aviation Services","KILM":"Aero Center","CYQX":"Woodward Aviation","KHIO":"Global Aviation Inc.","KCRP":"Sterling Air Service","KVNC":"Skyport Aviation","EHAM":"Jet Aviation","KCPR":"Aero Center","KMKE":"Avflight","KDVO":"Skyshare","KGYY":"B. Coleman Aviation","KJAX":"Sheltair","KLZU":"Aircraft Specialists Jet Center","KAFJ":"Skyward Aviation","KBHM":"Million Air","KDCU":"Pryor Flight Center","KTPA":"Sheltair","KROG":"Beaver Lake Aviation","KSLN":"Avflight","KPNS":"Pensacola Aviation Center, LLC","KHUT":"Wells Aircraft","CYXX":"Fast Air Jet Centre","KBIL":"Edwards Jet Center","KJVL":"Revv Aviation","KMOD":"Modesto Jet Center","KSAT":"Million Air","KCFO":"Colorado Air and Space Port","KPTK":"Pentastar Aviation","KLNK":"Duncan Aviation","KIND":"Million Air","KDSM":"Modern Aviation","KAVK":"Alva Regional Airport","KPVG":"Hampton Roads Executive Airport","KGRB":"Jet Air Group","KCLE":"Jets FBO Network","KPNA":"Top Flight","KLXT":"City of Lee's Summit","KLWM":"Falcon Air","KLBE":"Laurel Highlands Jet Center","KBFI":"Skyservice","KFFM":"Sky Crew Services","KPWM":"Northeast Air","KRNH":"East Metro Jet Center","KCMA":"Air 7","KCNO":"Flying Tigers Aviation","KRZR":"Cleveland Regional Jetport","KSTS":"KaiserAir Santa Rosa Jet Center","KVNY":"Castle & Cooke Aviation","KATY":"ATY Aviation, Inc.","KGSO":"Koury Aviation","KUDD":"Dunes Air","KPEQ":"Crosby Flying Services, LLC","KMVN":"SRT Flightline","KMSO":"Northstar Jet","KOLV":"Memphis Executive Jet Center, LLC","KAFK":"Blue Line Aviation","KPHX":"Cutter Aviation","KJVY":"Honaker Aviation","KSNS":"gateOne","KSUW":"Superior Flying Services, LLC","KDXR":"Reliant Air","KFTW":"Texas Jet","CYWG":"Fast Air Jet Centre","KGTF":"Great Falls Jet Center","KTLH":"Million Air","KFTY":"Hill Aircraft","KMLU":"Avflight","KSTP":"St. Paul Flight Center","KDTN":"Tubreaux Aviation","KAMA":"Haven FBO","KHUM":"Simon Aviation Services","KOQU":"FlightLevel Rhode Island","KBED":"Jet Aviation","KARR":"J.A. Air Center","KAZO":"Duncan Aviation","KBVU":"Boulder City Aviation Services","KCMD":"Cullman Regional Airport","KCBF":"Apex Aero Center","KENW":"Stein's Aircraft Services","KFOE":"Million Air","KEXX":"Fly High Lexington","KSAV":"Sheltair","CYQB":"Lux FBO","H81":"Redline Aviation","KSDL":"Jet Aviation","KAAO":"Clemens Aviation","KODO":"Ector County Odessa Schlemeyer Field","KECP":"Sheltair","KCDS":"Boedeker Flying Service","KCXP":"Stellar Aviation","KACT":"Freeman Jet Center Waco","KBFF":"Classic Aircraft Service","KOWD":"Boston Executive","KBTF":"Skypark Airport","TIST":"Standard Aviation LLC","KOPF":"Fontainebleau Aviation","KDHT":"Starlink Aviation","KMLS":"Miles City Airport","0A9":"Elizabethton Municipal Airport","EINN":"Signature Aviation","KPWK":"Atlantic Aviation","KABI":"Freeman Jet Center Abilene","KDKB":"City of DeKalb","KPWA":"Jetset FBO","M54":"Direct Flight Solutions","KPGA":"American Aviation, Inc.","KNEW":"Flightline First","KEVV":"United Companies Air Center","KCCR":"Concord Jet Center","KFOK":"Signature Aviation","KMAE":"Madera Jet Center","KTRL":"Apex Aero Center","KFFZ":"Cunningham Aviation","KILG":"flyAdvanced","EGGD":"Centreline","KSEE":"Circle Air Group","KHYS":"Hays Aircraft LLC","KCOD":"Beacon Air Group","KLWS":"Hillcrest Aircraft Company","KARG":"Walnut Ridge Regional Airport","CYYZ":"Execaire Aviation","KDAB":"Yelvington Jet Aviation","KFPR":"APP Jet Center","KVQQ":"Million Air","KMGR":"Eagles of America Inc.","KMYF":"Crownair Aviation","KFNL":"jetCenters of Colorado","PHNL":"Castle & Cooke Aviation","KENV":"Wendover Airport","KSRQ":"Ascension FBO Network","KSNA":"Clay Lacy","KRBW":"Lowcountry Regional Airport","KJWN":"Contour Flight Support","KHWD":"APP Jet Center","KSAF":"Atlantic Aviation","KCRG":"Sky Harbor Aviation","KMRB":"MRB Aviation","KECG":"Elizabeth City Regional Airport","KSGU":"Sandstone Aviation","KTUS":"Tucson Jet Center","CYHU":"Lux FBO","KSAD":"Spalsbury Aviation","KELN":"Mt. Stuart Aviation","KSDY":"Richland Aviation","KLAL":"Aero Center","KESN":"Trident Aircraft","KAPA":"jetCenters of Colorado","KFLL":"Sheltair","KROC":"Avflight","KOXR":"Axis Air","KPRC":"Cutter Aviation","KJKA":"Gulf Air Center","KXNX":"Jet Access","KLBF":"Trego-Dugan Aviation","KHOB":"Christian Aero","KCXW":"Conway Regional Airport","KJLN":"Mizzou Aviation","KTHA":"Tullahoma Municipal Airport","MBPV":"Business Aviation Ltd","KIXD":"Advanced Aviation Jet Center","KAPS":"Port of South Louisiana","KLRU":"Francis Aviation LLC","KCNI":"S & S Aviation","KHPN":"Million Air","KTYR":"Johnson Aviation","KELP":"Million Air","KEWB":"NorEast Aviation Services Inc","KJST":"Nulton Aviation Services, Inc.","KLNA":"Stellar Aviation","KTVC":"Avflight","KWDG":"Enid Woodring Regional Airport","KAKO":"Hayes Aviation","KHHR":"Jet Center","KUKF":"Wilkes County Airport","KGYI":"Rise Aviation","KTRM":"Desert Jet Center","KTTA":"Raleigh Executive Jetport","KDDC":"Crotts Aircraft Service","EDDL":"Jet Aviation","KOAJ":"Skyport Aviation","KBFL":"Bakersfield Jet Center","KICT":"Yingling Aviation","KPBI":"Jet Aviation","KUES":"Stein's Aircraft Services, LLC","KFXE":"Banyan Air Service","KCLW":"FlyUSA","KPVU":"Duncan Aviation","KCAK":"Avflight","KAXS":"Altus-Quartz Mt. Regional Airport","KCKB":"V1 Aviation","KTIW":"Narrows Aviation","KLBB":"Million Air Lubbock","KDAL":"Business Jet","KXNA":"Regional Jet Center","KCOS":"Cutter Aviation","KISP":"New York Jet","KMKG":"Executive Air Transport","KTOL":"Grand Aire, Inc.","F05":"Wilbarger County Airport","KJYO":"Kuhn Jet Center","KALO":"Livingston Aviation","KIAD":"Atlantic Aviation","KBIV":"Avflight","KBJC":"Sheltair","KPXE":"Perry Houston County Airport Authority"};
+
+// Default FBOs per airport (always pre-selected when no FBO chosen yet)
+const DEFAULT_FBOS = { 'KSJC': 'Signature Aviation' };
+
 function fboSelectHtml(icao, legIdx, field, selected) {
   if (!icao) return '';
   const c = fboCache[icao];
@@ -500,10 +659,18 @@ function fboSelectHtml(icao, legIdx, field, selected) {
     return c?.loading ? '<div class="fbo-loading">Loading FBOs...</div>' : '';
   }
   if (!c.fbos.length) return '<div class="fbo-loading dim">No FBOs</div>';
+  // Apply default if nothing selected yet
+  const effective = selected || DEFAULT_FBOS[icao] || '';
+  // If we just applied a default, persist it to the leg
+  if (!selected && effective && legIdx >= 0 && legs[legIdx]) {
+    legs[legIdx][field] = effective;
+  }
+  const caaFbo = CAA_FBOS[icao];
   let html = `<select class="fbo-select" data-l="${legIdx}" data-fbo="${field}"><option value="">FBO...</option>`;
   for (const f of c.fbos) {
-    const label = f.name;
-    html += `<option value="${esc(f.name)}"${f.name === selected ? ' selected' : ''}>${esc(label)}</option>`;
+    const isCaa = caaFbo && f.name.includes(caaFbo);
+    const label = isCaa ? `★ ${f.name} (CAA)` : f.name;
+    html += `<option value="${esc(f.name)}"${f.name === effective ? ' selected' : ''}>${esc(label)}</option>`;
   }
   html += '</select>';
   return html;
@@ -592,7 +759,7 @@ function autoPopulateTZ() {
 // ── Leg management ──
 function addLeg(dep, arr, ground, rest, nextDep) {
   const lastArr = legs.length > 0 ? legs[legs.length-1].arr : '';
-  legs.push({ dep: dep||lastArr, arr: arr||'', groundMin: ground ?? null, rest: rest||false, wind: null, nextDep: nextDep||'', depFbo: '', arrFbo: '', pax: 0 });
+  legs.push({ dep: dep||lastArr, arr: arr||'', groundMin: ground ?? null, rest: rest||false, wind: null, nextDep: nextDep||'', depFbo: '', arrFbo: '', pax: 0, paxNames: [], food: '', groundTransport: '' });
   recalc();
 }
 function removeLeg(i) { legs.splice(i, 1); recalc(); }
@@ -608,7 +775,7 @@ function loadRoute() {
   if (codes.length < 2) return;
   legs = [];
   for (let i = 0; i < codes.length - 1; i++) {
-    legs.push({ dep: codes[i], arr: codes[i+1], groundMin: null, rest: false, wind: null, nextDep: '', depFbo: '', arrFbo: '', pax: 0 });
+    legs.push({ dep: codes[i], arr: codes[i+1], groundMin: null, rest: false, wind: null, nextDep: '', depFbo: '', arrFbo: '', pax: 0, paxNames: [], food: '', groundTransport: '' });
   }
   input.value = '';
   recalc();
@@ -720,7 +887,7 @@ function recalc() {
     if (isCrew) {
       const showRow = document.createElement('tr');
       showRow.className = 'show-row';
-      showRow.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${depLabel}</strong> — ${showMin} min before departure</td>
+      showRow.innerHTML = `<td></td><td colspan="7">👤 Crew show at <strong>${depLabel}</strong> — ${showMin} min before departure</td>
         <td>${showTimeDisplay}</td><td></td><td></td>`;
       tbody.appendChild(showRow);
     }
@@ -788,7 +955,7 @@ function recalc() {
       if (isCrew) {
         const str = document.createElement('tr');
         str.className = 'show-row';
-        str.innerHTML = `<td></td><td colspan="6">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin} min before departure</td>
+        str.innerHTML = `<td></td><td colspan="7">👤 Crew show at <strong>${esc(leg.dep||'?')}</strong> — ${showMin} min before departure</td>
           <td>${fmtTimeCell(dutyStartTime, showTz)}</td><td></td><td></td>`;
         tbody.appendChild(str);
       }
@@ -876,18 +1043,21 @@ function recalc() {
     // Build leg row
     const tr = document.createElement('tr');
     tr.className = 'leg-row' + (legInvalid ? ' invalid' : '');
+    tr.draggable = true;
+    tr.dataset.leg = i;
     tr.innerHTML = `
-      <td>${i+1}</td>
-      <td>${depCellHtml}</td>
-      <td class="arrow">→</td>
-      <td><div class="icao-wrapper"><input class="icao-input${arrInvalid ? ' invalid' : ''}" value="${esc(leg.arr)}" data-l="${i}" data-f="arr" placeholder="ICAO" spellcheck="false"></div>${arrCity ? `<div class="icao-city">${esc(arrCity)}</div>` : ''}${arrRwy}${leg.arr ? fboSelectHtml(leg.arr, i, 'arrFbo', leg.arrFbo) : ''}${arrInvalid ? '<div class="validation-warn">Unknown</div>' : ''}${sameApt ? '<div class="validation-warn">Same as departure</div>' : ''}</td>
-      <td class="mono">${distNm!=null ? Math.round(distNm).toLocaleString() + ' nm' : '—'}</td>
-      <td class="mono">${fmtDur(flightMin)}${windHtml}</td>
-      <td class="mono">${fmtDur(blockMin)}</td>
-      <td><select class="pax-select" data-l="${i}" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.2rem;border-radius:3px;font-size:0.8rem">${Array.from({length:20},(_,n)=>`<option value="${n}"${n===leg.pax?' selected':''}>${n}</option>`).join('')}</select></td>
-      <td>${fmtTimeCell(departTime, depTz)}</td>
-      <td>${fmtTimeCell(arriveTime, arrTz)}</td>
-      <td>
+      <td class="td-num"><span class="drag-handle">☰</span>${i+1}</td>
+      <td class="td-from">${depCellHtml}</td>
+      <td class="td-arrow arrow">→</td>
+      <td class="td-to"><div class="icao-wrapper"><input class="icao-input${arrInvalid ? ' invalid' : ''}" value="${esc(leg.arr)}" data-l="${i}" data-f="arr" placeholder="ICAO" spellcheck="false"></div>${arrCity ? `<div class="icao-city">${esc(arrCity)}</div>` : ''}${arrRwy}${leg.arr ? fboSelectHtml(leg.arr, i, 'arrFbo', leg.arrFbo) : ''}${arrInvalid ? '<div class="validation-warn">Unknown</div>' : ''}${sameApt ? '<div class="validation-warn">Same as departure</div>' : ''}</td>
+      <td class="td-dist mono"><span class="mobile-label">Dist </span>${distNm!=null ? Math.round(distNm).toLocaleString() + ' nm' : '—'}</td>
+      <td class="td-flight mono"><span class="mobile-label">Flight </span>${fmtDur(flightMin)}${windHtml}</td>
+      <td class="td-block mono"><span class="mobile-label">Block </span>${fmtDur(blockMin)}</td>
+      <td class="td-pax"><select class="pax-select" data-l="${i}" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.2rem;border-radius:3px;font-size:0.8rem">${Array.from({length:20},(_,n)=>`<option value="${n}"${n===leg.pax?' selected':''}>${n}</option>`).join('')}</select>${leg.pax > 0 ? '<div class="pax-names" style="margin-top:2px">' + Array.from({length:leg.pax},(_,n)=>`<input class="leg-extra-input pax-name-input" data-l="${i}" data-pn="${n}" value="${esc(leg.paxNames[n]||'')}" placeholder="Passenger ${n+1}" style="display:block;margin-top:1px">`).join('') + '</div>' : ''}</td>
+      <td class="td-food"><input class="leg-extra-input food-input" data-l="${i}" value="${esc(leg.food)}" placeholder="Food..."><br><input class="leg-extra-input transport-input" data-l="${i}" value="${esc(leg.groundTransport)}" placeholder="Transport..."></td>
+      <td class="td-depart"><span class="mobile-label">Depart<br></span>${fmtTimeCell(departTime, depTz)}</td>
+      <td class="td-arrive"><span class="mobile-label">Arrive<br></span>${fmtTimeCell(arriveTime, arrTz)}</td>
+      <td class="td-actions">
         <div style="display:flex;gap:2px">
           <button class="btn-icon" onclick="moveLeg(${i},-1)" title="Move up">▲</button>
           <button class="btn-icon" onclick="moveLeg(${i},1)" title="Move down">▼</button>
@@ -895,6 +1065,31 @@ function recalc() {
         </div>
       </td>`;
     tbody.appendChild(tr);
+
+    // Setup drag-and-drop
+    tr.addEventListener('dragstart', e => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', i);
+      tr.classList.add('dragging');
+    });
+    tr.addEventListener('dragend', () => tr.classList.remove('dragging'));
+    tr.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      tr.classList.add('drag-over');
+    });
+    tr.addEventListener('dragleave', () => tr.classList.remove('drag-over'));
+    tr.addEventListener('drop', e => {
+      e.preventDefault();
+      tr.classList.remove('drag-over');
+      const from = +e.dataTransfer.getData('text/plain');
+      const to = +tr.dataset.leg;
+      if (from !== to && !isNaN(from) && !isNaN(to)) {
+        const [moved] = legs.splice(from, 1);
+        legs.splice(to, 0, moved);
+        recalc();
+      }
+    });
 
     // Setup autocomplete for ICAO inputs
     tr.querySelectorAll('.icao-input').forEach(inp => {
@@ -913,7 +1108,32 @@ function recalc() {
 
     // Setup pax select handler
     tr.querySelector('.pax-select')?.addEventListener('change', function() {
-      legs[+this.dataset.l].pax = +this.value;
+      const li = +this.dataset.l;
+      const newCount = +this.value;
+      legs[li].pax = newCount;
+      // Resize paxNames array, preserving existing names; inherit from previous leg
+      const prevNames = li > 0 ? (legs[li - 1].paxNames || []) : [];
+      while (legs[li].paxNames.length < newCount) {
+        const pi = legs[li].paxNames.length;
+        legs[li].paxNames.push(prevNames[pi] || '');
+      }
+      legs[li].paxNames.length = newCount;
+      recalc();
+    });
+
+    // Setup pax name handlers
+    tr.querySelectorAll('.pax-name-input').forEach(inp => {
+      inp.addEventListener('change', function() {
+        legs[+this.dataset.l].paxNames[+this.dataset.pn] = this.value;
+      });
+    });
+
+    // Setup food/transport handlers
+    tr.querySelector('.food-input')?.addEventListener('change', function() {
+      legs[+this.dataset.l].food = this.value;
+    });
+    tr.querySelector('.transport-input')?.addEventListener('change', function() {
+      legs[+this.dataset.l].groundTransport = this.value;
     });
 
     // Setup date/time handlers in dep cell
@@ -1012,7 +1232,7 @@ function recalc() {
         const rtr = document.createElement('tr');
         rtr.className = 'rest-block';
         rtr.innerHTML = `<td></td>
-          <td colspan="8" style="padding-left:1.5rem">
+          <td colspan="9" style="padding-left:1.5rem">
             <div>🛏 <strong>Crew Rest — ${esc(leg.arr||'?')}</strong>${restWarn}</div>
             <div style="margin-top:0.35rem">
               <span class="rest-duration">${restMin != null ? fmtDur(restMin) : fmtDur(gMin)} rest</span>
@@ -1026,7 +1246,7 @@ function recalc() {
         const gtr = document.createElement('tr');
         gtr.className = 'ground-row' + (groundInvalid ? ' invalid' : '');
         gtr.innerHTML = `<td></td>
-          <td colspan="8" style="text-align:center">
+          <td colspan="9" style="text-align:center">
             <span class="dim" style="font-size:0.75rem">${fmtDur(gMin)} on ground</span>
             ${groundInvalid ? `<span class="validation-warn">⚠ ${groundWarnMsg}</span>` : ''}
           </td><td></td>`;
@@ -1221,6 +1441,20 @@ function buildURL() {
   if (sm && sm !== '60') p.set('sh', sm);
   const t = $('startTime').value;
   if (t) p.set('t', t);
+  // Trip details
+  const pi = $('tripPilot').value;
+  const pp = $('tripPilotPhone').value;
+  if (pi && pi !== 'David Scheinman') p.set('pi', pi);
+  if (pp && pp !== '650-387-1111') p.set('pp', pp);
+  const pu = $('tripPurpose').value;
+  if (pu) p.set('pu', pu);
+  if ($('tripCargoToggle').value === 'yes') {
+    const desc = $('tripCargoDesc').value;
+    const wt = $('tripCargoWeight').value;
+    const cg = [desc, wt].filter(Boolean).join('|');
+    if (cg) p.set('cg', cg);
+  }
+  if ($('tripCargoToggle').value === 'no') p.set('cn', '1');
   if (legs.length) {
     p.set('l', legs.map(l => `${l.dep}-${l.arr}`).join(','));
     const grounds = legs.slice(0,-1).map(l => l.groundMin ?? '');
@@ -1237,6 +1471,14 @@ function buildURL() {
     if (afbos.some(f => f)) p.set('af', afbos.join('|'));
     const paxCounts = legs.map(l => l.pax || 0);
     if (paxCounts.some(n => n > 0)) p.set('px', paxCounts.join(','));
+    // Per-leg food & transport
+    const foods = legs.map(l => l.food || '');
+    const transports = legs.map(l => l.groundTransport || '');
+    if (foods.some(f => f)) p.set('fd', foods.join('|'));
+    if (transports.some(t => t)) p.set('gt', transports.join('|'));
+    // Per-leg passenger names (semicolon within leg, pipe between legs)
+    const paxNamesList = legs.map(l => (l.paxNames || []).join(';'));
+    if (paxNamesList.some(n => n)) p.set('pn', paxNamesList.join('|'));
   }
   return location.origin + location.pathname + '?' + p.toString();
 }
@@ -1258,11 +1500,17 @@ function doSave(name, id) {
       currentTripId = d.id;
       lastSavedState = JSON.stringify(getTripState());
       showToast('Saved');
+      loadHistoryInline();
     })
     .catch(() => showToast('Save failed'));
 }
 
 function saveTrip() {
+  if (!$('tripCargoToggle').value) {
+    showToast('Please answer the cargo question before saving');
+    $('tripCargoToggle').focus();
+    return;
+  }
   const currentRoute = legs.map(l => l.dep).concat(legs.length ? [legs[legs.length-1].arr] : []).filter(Boolean).join(' → ');
   const name = currentRoute || 'New Trip';
   if (currentTripId) {
@@ -1313,6 +1561,7 @@ function loadTrip(id) {
       parseURL();
       recalc();
       fetchWinds();
+      loadHistoryInline();
       showToast('Loaded');
     })
     .catch(() => showToast('Load failed'));
@@ -1453,6 +1702,23 @@ function parseURL() {
     $('startTimeStore').value = parts[1] || '';
   }
   // tz param no longer used; timezones auto-populated
+  // Trip details
+  $('tripPilot').value = p.has('pi') ? p.get('pi') : 'David Scheinman';
+  $('tripPilotPhone').value = p.has('pp') ? p.get('pp') : '650-387-1111';
+  $('tripPurpose').value = p.has('pu') ? p.get('pu') : '';
+  if (p.has('cg')) {
+    $('tripCargoToggle').value = 'yes';
+    $('cargoDetails').style.display = 'flex';
+    const cgParts = p.get('cg').split('|');
+    $('tripCargoDesc').value = cgParts[0] || '';
+    $('tripCargoWeight').value = cgParts[1] || '';
+  } else if (p.has('cn')) {
+    $('tripCargoToggle').value = 'no';
+    $('cargoDetails').style.display = 'none';
+  } else {
+    $('tripCargoToggle').value = '';
+    $('cargoDetails').style.display = 'none';
+  }
   if (p.has('l')) {
     const pairs = p.get('l').split(',');
     const grounds = p.has('g') ? p.get('g').split(',') : [];
@@ -1462,8 +1728,16 @@ function parseURL() {
     const dfbos = p.has('df') ? p.get('df').split('|') : [];
     const afbos = p.has('af') ? p.get('af').split('|') : [];
     const pxCounts = p.has('px') ? p.get('px').split(',') : [];
+    const foods = p.has('fd') ? p.get('fd').split('|') : [];
+    const transports = p.has('gt') ? p.get('gt').split('|') : [];
+    const paxNamesRaw = p.has('pn') ? p.get('pn').split('|') : [];
     legs = pairs.map((pair, i) => {
       const [dep, arr] = pair.split('-');
+      const names = paxNamesRaw[i] ? paxNamesRaw[i].split(';').filter(Boolean) : [];
+      const count = pxCounts[i] ? +pxCounts[i] : 0;
+      // Ensure names array matches pax count
+      while (names.length < count) names.push('');
+      names.length = count;
       return {
         dep: dep||'', arr: arr||'',
         groundMin: (grounds[i] != null && grounds[i] !== '') ? +grounds[i] : null,
@@ -1473,7 +1747,10 @@ function parseURL() {
         nextDepDate: depDates[i] || '',
         depFbo: dfbos[i] || '',
         arrFbo: afbos[i] || '',
-        pax: pxCounts[i] ? +pxCounts[i] : 0,
+        pax: count,
+        paxNames: names,
+        food: foods[i] || '',
+        groundTransport: transports[i] || '',
       };
     });
   }
@@ -1498,11 +1775,22 @@ function goHome() {
   if (legs.length) {
     const currentState = JSON.stringify(getTripState());
     if (currentState !== lastSavedState) {
-      const choice = confirm('You have unsaved changes.\n\nOK = Save before leaving\nCancel = Discard changes');
-      if (choice) { saveTrip(); return; }
+      showGoHomeDialog();
+      return;
     }
   }
   showHome();
+}
+
+function showGoHomeDialog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'ff-overlay';
+  overlay.innerHTML = `<div class="ff-dialog"><h3>Unsaved Changes</h3><p style="color:#94a3b8;font-size:0.85rem;margin-bottom:1rem">You have unsaved changes to this trip.</p><div class="ff-buttons" style="justify-content:flex-end;gap:0.5rem"><button class="ff-cancel" id="goHomeCancel">Cancel</button><button class="btn-secondary" id="goHomeDiscard" style="border:none;padding:0.4rem 1rem;border-radius:4px;font-size:0.85rem;cursor:pointer">Discard Changes</button><button class="ff-push" id="goHomeSave">Save</button></div></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#goHomeCancel').onclick = () => overlay.remove();
+  overlay.querySelector('#goHomeDiscard').onclick = () => { overlay.remove(); showHome(); };
+  overlay.querySelector('#goHomeSave').onclick = () => { overlay.remove(); saveTrip(); setTimeout(showHome, 300); };
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 function startNewTrip() {
@@ -1513,6 +1801,9 @@ function startNewTrip() {
   $('aircraft').value = $('homeAircraft').value || 'G550';
   $('pClimb').value = ''; $('pSpeed').value = ''; $('pDescent').value = ''; $('pStartup').value = ''; $('pShutdown').value = ''; $('pAlt').value = ''; $('showTime').value = '';
   $('startTime').value = ''; $('startDateStore').value = ''; $('startTimeStore').value = '';
+  $('tripPilot').value = 'David Scheinman'; $('tripPilotPhone').value = '650-387-1111';
+  $('tripPurpose').value = ''; $('tripCargoToggle').value = ''; $('cargoDetails').style.display = 'none'; $('tripCargoDesc').value = ''; $('tripCargoWeight').value = '';
+  $('historySection').style.display = 'none';
   $('crew').value = '2';
   updatePlaceholders();
   showPlanner();
@@ -1570,22 +1861,176 @@ function loadTripAndShow(id) {
         recalc();
         lastSavedState = JSON.stringify(getTripState());
         fetchWinds();
+        loadHistoryInline();
       });
     })
     .catch(() => showToast('Load failed'));
 }
 
 // ── Auth ──
+let currentUserEmail = null;
+let currentUserName = null;
+
 function doLogin() {
   const pw = $('loginPass').value;
   fetch('auth.php?action=login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({password:pw}) })
     .then(r => r.json())
     .then(d => {
-      if (d.ok) { $('loginScreen').style.display='none'; initApp(); }
+      if (d.ok) {
+        currentUserEmail = d.email || 'shared';
+        currentUserName = d.name || 'Shared Login';
+        $('loginScreen').style.display='none';
+        initApp();
+      }
       else { $('loginErr').textContent='Wrong password'; $('loginErr').style.display=''; }
     }).catch(() => { $('loginErr').textContent='Login failed'; $('loginErr').style.display=''; });
 }
 $('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function handleGoogleCredential(response) {
+  fetch('auth.php?action=google', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({credential: response.credential}) })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        currentUserEmail = d.email;
+        currentUserName = d.name;
+        $('loginScreen').style.display='none';
+        initApp();
+      } else {
+        $('loginErr').textContent = d.error || 'Google login failed';
+        $('loginErr').style.display = '';
+      }
+    }).catch(() => { $('loginErr').textContent='Google login failed'; $('loginErr').style.display=''; });
+}
+
+// ── Planner share link ──
+function sharePlannerLink() {
+  if (!currentTripId) { showToast('Save the trip first'); return; }
+  const url = location.origin + location.pathname.replace(/index\.html$/, '') + 'planner.html?id=' + encodeURIComponent(currentTripId);
+  if (navigator.clipboard && location.protocol === 'https:') {
+    navigator.clipboard.writeText(url).then(() => showToast('Planner link copied')).catch(() => fallbackCopy(url));
+  } else {
+    fallbackCopy(url);
+  }
+  window.open(url, '_blank');
+}
+
+// ── Version history ──
+let viewingVersion = null;
+let currentTripState = null; // saved for restoring after version view
+
+function summarizeChanges(oldState, newState) {
+  const changes = [];
+  if ((oldState.l || '') !== (newState.l || '')) changes.push('Route changed');
+  if ((oldState.t || '') !== (newState.t || '')) changes.push('Departure time changed');
+  if ((oldState.df || '') !== (newState.df || '') || (oldState.af || '') !== (newState.af || '')) changes.push('FBOs updated');
+  if ((oldState.d || '') !== (newState.d || '') || (oldState.dd || '') !== (newState.dd || '')) changes.push('Schedule adjusted');
+  if ((oldState.g || '') !== (newState.g || '')) changes.push('Ground times changed');
+  if ((oldState.px || '') !== (newState.px || '')) changes.push('Passenger count changed');
+  if ((oldState.pn || '') !== (newState.pn || '')) changes.push('Passenger names updated');
+  if ((oldState.fd || '') !== (newState.fd || '')) changes.push('Food/catering updated');
+  if ((oldState.gt || '') !== (newState.gt || '')) changes.push('Ground transport updated');
+  if ((oldState.pu || '') !== (newState.pu || '')) changes.push('Purpose updated');
+  if ((oldState.cg || '') !== (newState.cg || '')) changes.push('Cargo updated');
+  if ((oldState.a || '') !== (newState.a || '')) changes.push('Aircraft changed');
+  if (!changes.length) changes.push('Minor update');
+  return changes.join('; ');
+}
+
+function loadHistoryInline() {
+  const section = $('historySection');
+  const body = $('historyBody');
+  if (!currentTripId) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  body.innerHTML = '<div class="hist-empty">Loading...</div>';
+
+  fetch(`trips.php?id=${encodeURIComponent(currentTripId)}&history=1`)
+    .then(r => r.json())
+    .then(async data => {
+      const versions = data.versions || [];
+      if (!versions.length) {
+        body.innerHTML = '<div class="hist-empty">No previous versions.</div>';
+        return;
+      }
+      // Fetch version states for diffing
+      const states = {};
+      const currentState = getTripState();
+      states[data.current?.version || 1] = currentState;
+      await Promise.all(versions.map(async v => {
+        try {
+          const r = await fetch(`trips.php?id=${encodeURIComponent(currentTripId)}&version=${v.version}`);
+          const d = await r.json();
+          states[v.version] = d.state || {};
+        } catch { states[v.version] = {}; }
+      }));
+
+      const allVers = [
+        { version: data.current?.version || 1, saved_at: data.current?.saved_at, saved_by: data.current?.saved_by, isCurrent: true },
+        ...versions.map(v => ({ ...v, isCurrent: false }))
+      ];
+      allVers.sort((a, b) => b.version - a.version);
+
+      let html = '';
+      for (let i = 0; i < allVers.length; i++) {
+        const v = allVers[i];
+        const prev = allVers[i + 1];
+        const dateStr = v.saved_at ? new Date(v.saved_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' }) : '';
+        let changeStr = '';
+        if (prev && states[v.version] && states[prev.version]) {
+          changeStr = summarizeChanges(states[prev.version], states[v.version]);
+        }
+        html += `<div class="hist-item">`;
+        html += `<div class="hi-left"><div><span class="hi-ver">v${v.version}${v.isCurrent ? ' (current)' : ''}</span><span class="hi-date">${esc(dateStr)}</span>${v.saved_by ? `<span class="hi-who">${esc(v.saved_by)}</span>` : ''}</div>`;
+        if (changeStr) html += `<div class="hi-changes">${esc(changeStr)}</div>`;
+        html += `</div>`;
+        if (!v.isCurrent) html += `<button class="btn-sm btn-secondary" onclick="loadVersion(${v.version})">View</button>`;
+        html += `</div>`;
+      }
+      body.innerHTML = html;
+    })
+    .catch(() => { body.innerHTML = '<div class="hist-empty">Failed to load history.</div>'; });
+}
+
+function loadVersion(ver) {
+  if (!currentTripId) return;
+  // Save current state before switching
+  if (!viewingVersion) {
+    currentTripState = JSON.stringify(getTripState());
+  }
+  fetch(`trips.php?id=${encodeURIComponent(currentTripId)}&version=${ver}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { showToast(data.error); return; }
+      viewingVersion = ver;
+      const p = new URLSearchParams(data.state);
+      history.replaceState(null, '', '?' + p.toString());
+      parseURL();
+      recalc();
+      $('versionBanner').style.display = '';
+      $('versionBannerText').textContent = `Viewing version ${ver} — saved ${data.saved_at || ''} by ${data.saved_by || 'unknown'}`;
+    })
+    .catch(() => showToast('Failed to load version'));
+}
+
+function restoreVersion() {
+  // Save the old version as current (just save the trip)
+  viewingVersion = null;
+  $('versionBanner').style.display = 'none';
+  currentTripState = null;
+  saveTrip();
+  showToast('Version restored');
+}
+
+function cancelVersionView() {
+  if (!currentTripState) return;
+  viewingVersion = null;
+  $('versionBanner').style.display = 'none';
+  const p = new URLSearchParams(JSON.parse(currentTripState));
+  history.replaceState(null, '', '?' + p.toString());
+  parseURL();
+  recalc();
+  currentTripState = null;
+}
 
 function initApp() {
   const p = new URLSearchParams(location.search);
@@ -1603,7 +2048,25 @@ function initApp() {
 
 // Check auth on load
 fetch('auth.php?action=check').then(r=>r.json()).then(d => {
-  if (d.ok) { $('loginScreen').style.display='none'; initApp(); }
+  if (d.ok) {
+    currentUserEmail = d.email || 'shared';
+    currentUserName = d.name || 'Shared Login';
+    $('loginScreen').style.display='none';
+    initApp();
+  }
+});
+
+// Initialize Google Identity Services (if available)
+window.addEventListener('load', () => {
+  if (typeof google !== 'undefined' && google.accounts) {
+    google.accounts.id.initialize({
+      client_id: '874837483845-ms07npvkph4rd1t6o92o493gf5laavh2.apps.googleusercontent.com',
+      callback: handleGoogleCredential
+    });
+    google.accounts.id.renderButton($('googleSignIn'), {
+      theme: 'filled_black', size: 'large', width: 248
+    });
+  }
 });
 </script>
 </body>

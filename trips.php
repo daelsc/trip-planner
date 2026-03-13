@@ -1,6 +1,9 @@
 <?php
 session_start();
 header('Content-Type: application/json');
+require_once __DIR__ . '/db.php';
+
+$db = getDb();
 
 // Protect write operations
 $method = $_SERVER['REQUEST_METHOD'];
@@ -10,72 +13,106 @@ if ($method !== 'GET' && empty($_SESSION['authed'])) {
     exit;
 }
 
-$dataDir = __DIR__ . '/saved_trips';
-if (!is_dir($dataDir)) {
-    mkdir($dataDir, 0755, true);
-}
-$counterFile = "$dataDir/.counter";
-
-function nextTripNumber() {
-    global $counterFile;
-    $n = file_exists($counterFile) ? (int)file_get_contents($counterFile) : 0;
-    $n++;
-    file_put_contents($counterFile, $n);
-    return $n;
-}
-
 // List all saved trips
 if ($method === 'GET' && !isset($_GET['id'])) {
+    $rows = $db->query("SELECT id, number, name, route, purpose, cargo, state, version, saved_at, saved_by FROM trips ORDER BY saved_at DESC")->fetchAll(PDO::FETCH_ASSOC);
     $trips = [];
-    foreach (glob("$dataDir/*.json") as $f) {
-        $data = json_decode(file_get_contents($f), true);
-        if ($data) {
-            $tripDate = '';
-            if (isset($data['state']['t'])) {
-                $tripDate = substr($data['state']['t'], 0, 10); // YYYY-MM-DD
-            }
-            $trips[] = [
-                'id' => basename($f, '.json'),
-                'number' => $data['number'] ?? null,
-                'name' => $data['name'] ?? 'Untitled',
-                'route' => $data['route'] ?? '',
-                'date' => $tripDate,
-                'saved' => $data['saved'] ?? '',
-            ];
+    foreach ($rows as $r) {
+        $state = json_decode($r['state'], true) ?: [];
+        $tripDate = '';
+        if (isset($state['t'])) {
+            $tripDate = substr($state['t'], 0, 10);
         }
+        $trips[] = [
+            'id' => $r['id'],
+            'number' => $r['number'],
+            'name' => $r['name'] ?? 'Untitled',
+            'route' => $r['route'] ?? '',
+            'purpose' => $r['purpose'] ?? '',
+            'cargo' => $r['cargo'] ?? '',
+            'date' => $tripDate,
+            'saved' => $r['saved_at'] ?? '',
+            'savedBy' => $r['saved_by'] ?? '',
+            'version' => $r['version'] ?? 1,
+        ];
     }
     // Sort chronologically by trip date (earliest first), then by number
     usort($trips, function($a, $b) {
         $da = $a['date'] ?: '9999';
-        $db = $b['date'] ?: '9999';
-        $cmp = strcmp($da, $db);
+        $db_ = $b['date'] ?: '9999';
+        $cmp = strcmp($da, $db_);
         return $cmp !== 0 ? $cmp : (($a['number'] ?? 0) - ($b['number'] ?? 0));
     });
     echo json_encode($trips);
     exit;
 }
 
-// Load a specific trip
+// Load a specific trip (with optional version or history)
 if ($method === 'GET' && isset($_GET['id'])) {
     $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['id']);
-    $file = "$dataDir/$id.json";
-    if (!file_exists($file)) {
+
+    // Version history list
+    if (isset($_GET['history'])) {
+        $stmt = $db->prepare("SELECT version, saved_at, saved_by FROM trip_versions WHERE trip_id = ? ORDER BY version DESC");
+        $stmt->execute([$id]);
+        $versions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Also include current version
+        $cur = $db->prepare("SELECT version, saved_at, saved_by FROM trips WHERE id = ?");
+        $cur->execute([$id]);
+        $current = $cur->fetch(PDO::FETCH_ASSOC);
+        echo json_encode(['current' => $current, 'versions' => $versions]);
+        exit;
+    }
+
+    // Load specific version
+    if (isset($_GET['version'])) {
+        $ver = (int)$_GET['version'];
+        $stmt = $db->prepare("SELECT state, saved_at, saved_by FROM trip_versions WHERE trip_id = ? AND version = ?");
+        $stmt->execute([$id, $ver]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Version not found']);
+            exit;
+        }
+        $row['state'] = json_decode($row['state'], true);
+        echo json_encode($row);
+        exit;
+    }
+
+    // Load current trip
+    $stmt = $db->prepare("SELECT * FROM trips WHERE id = ?");
+    $stmt->execute([$id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
         http_response_code(404);
         echo json_encode(['error' => 'Trip not found']);
         exit;
     }
-    echo file_get_contents($file);
+    $out = [
+        'id' => $row['id'],
+        'number' => $row['number'],
+        'name' => $row['name'],
+        'route' => $row['route'],
+        'purpose' => $row['purpose'],
+        'cargo' => $row['cargo'],
+        'state' => json_decode($row['state'], true),
+        'saved' => $row['saved_at'],
+        'savedBy' => $row['saved_by'],
+        'version' => $row['version'],
+    ];
+    echo json_encode($out);
     exit;
 }
 
-// Delete a trip (POST with action=delete, or DELETE method) — must be before save handler
+// Delete a trip
 if (($method === 'POST' && ($_GET['action'] ?? '') === 'delete') || $method === 'DELETE') {
     $input = json_decode(file_get_contents('php://input'), true);
     $id = $input['id'] ?? ($_GET['id'] ?? '');
     $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $id);
-    $file = "$dataDir/$id.json";
-    if (file_exists($file)) {
-        unlink($file);
+    $stmt = $db->prepare("DELETE FROM trips WHERE id = ?");
+    $stmt->execute([$id]);
+    if ($stmt->rowCount() > 0) {
         echo json_encode(['ok' => true]);
     } else {
         http_response_code(404);
@@ -94,9 +131,12 @@ if ($method === 'POST') {
     }
     $id = $input['id'] ?? bin2hex(random_bytes(6));
     $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $id);
+
+    // Build route string from legs
     $route = '';
-    if (isset($input['state']['l'])) {
-        $pairs = explode(',', $input['state']['l']);
+    $state = $input['state'];
+    if (isset($state['l'])) {
+        $pairs = explode(',', $state['l']);
         $airports = [];
         foreach ($pairs as $p) {
             $parts = explode('-', $p);
@@ -105,27 +145,48 @@ if ($method === 'POST') {
         }
         $route = implode(' → ', $airports);
     }
-    // Use client-provided number, or preserve existing, or auto-assign
-    $number = $input['number'] ?? null;
-    if (!$number) {
-        $existingFile = "$dataDir/$id.json";
-        if (file_exists($existingFile)) {
-            $existing = json_decode(file_get_contents($existingFile), true);
-            $number = $existing['number'] ?? null;
-        }
-    }
-    if (!$number) $number = nextTripNumber();
 
-    $data = [
-        'id' => $id,
-        'number' => $number,
-        'name' => substr($input['name'], 0, 100),
-        'route' => $route,
-        'state' => $input['state'],
-        'saved' => date('c'),
-    ];
-    file_put_contents("$dataDir/$id.json", json_encode($data, JSON_PRETTY_PRINT));
-    echo json_encode(['id' => $id, 'number' => $number, 'name' => $data['name']]);
+    // Extract purpose and cargo from state
+    $purpose = $state['pu'] ?? '';
+    $cargo = $state['cg'] ?? '';
+
+    $stateJson = json_encode($state);
+    $userEmail = $_SESSION['user_email'] ?? 'shared';
+    $now = date('c');
+
+    // Check if trip exists
+    $existing = $db->prepare("SELECT number, version, state FROM trips WHERE id = ?");
+    $existing->execute([$id]);
+    $existingRow = $existing->fetch(PDO::FETCH_ASSOC);
+
+    if ($existingRow) {
+        // Archive current version before updating
+        $curVersion = $existingRow['version'] ?? 1;
+        $archiveStmt = $db->prepare("INSERT OR IGNORE INTO trip_versions (trip_id, version, state, saved_at, saved_by)
+            SELECT id, version, state, saved_at, saved_by FROM trips WHERE id = ?");
+        $archiveStmt->execute([$id]);
+
+        $newVersion = $curVersion + 1;
+        $number = $existingRow['number'];
+
+        $stmt = $db->prepare("UPDATE trips SET name = ?, route = ?, purpose = ?, cargo = ?, state = ?, version = ?, saved_at = ?, saved_by = ? WHERE id = ?");
+        $stmt->execute([substr($input['name'], 0, 100), $route, $purpose, $cargo, $stateJson, $newVersion, $now, $userEmail, $id]);
+
+        // Cap at 20 versions
+        $db->prepare("DELETE FROM trip_versions WHERE trip_id = ? AND version NOT IN (SELECT version FROM trip_versions WHERE trip_id = ? ORDER BY version DESC LIMIT 20)")->execute([$id, $id]);
+    } else {
+        // New trip — auto-assign number
+        $number = $input['number'] ?? null;
+        if (!$number) {
+            $maxNum = $db->query("SELECT COALESCE(MAX(number), 0) FROM trips")->fetchColumn();
+            $number = $maxNum + 1;
+        }
+
+        $stmt = $db->prepare("INSERT INTO trips (id, number, name, route, purpose, cargo, state, version, saved_at, saved_by) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)");
+        $stmt->execute([$id, $number, substr($input['name'], 0, 100), $route, $purpose, $cargo, $stateJson, $now, $userEmail]);
+    }
+
+    echo json_encode(['id' => $id, 'number' => $number, 'name' => substr($input['name'], 0, 100)]);
     exit;
 }
 
