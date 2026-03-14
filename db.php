@@ -26,6 +26,13 @@ function getDb() {
         saved_by TEXT
     )");
 
+    $db->exec("CREATE TABLE IF NOT EXISTS trip_locks (
+        trip_id TEXT PRIMARY KEY,
+        locked_by TEXT NOT NULL,
+        locked_name TEXT,
+        locked_at TEXT DEFAULT (datetime('now'))
+    )");
+
     $db->exec("CREATE TABLE IF NOT EXISTS trip_versions (
         id INTEGER PRIMARY KEY,
         trip_id TEXT NOT NULL REFERENCES trips(id) ON DELETE CASCADE,

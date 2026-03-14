@@ -402,6 +402,9 @@ button:hover { background: #2563eb; }
 </div>
 
 <div class="container">
+  <div id="lockBanner" class="history-banner" style="display:none;border-color:#f59e0b;color:#f59e0b">
+    <span id="lockBannerText"></span>
+  </div>
   <div id="versionBanner" class="history-banner" style="display:none">
     <span id="versionBannerText"></span>
     <button class="btn-sm" onclick="restoreVersion()">Restore</button>
@@ -1595,6 +1598,10 @@ function doSave(name, id) {
 }
 
 function saveTrip() {
+  if (tripLocked) {
+    showToast('This trip is locked by another user');
+    return;
+  }
   if (!$('tripCargoToggle').value) {
     showToast('Please answer the cargo question before saving');
     $('tripCargoToggle').focus();
@@ -1651,6 +1658,7 @@ function loadTrip(id) {
       recalc();
       fetchWinds();
       loadHistoryInline();
+      acquireLock(id);
       showToast('Loaded');
     })
     .catch(() => showToast('Load failed'));
@@ -1678,6 +1686,45 @@ document.addEventListener('click', e => {
 });
 
 let currentTripId = null;
+let lockHeartbeat = null;
+let tripLocked = false;
+
+function acquireLock(tripId) {
+  releaseLock();
+  fetch(`trips.php?action=lock&id=${encodeURIComponent(tripId)}`, { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) {
+        tripLocked = false;
+        hideLockBanner();
+        lockHeartbeat = setInterval(() => {
+          fetch(`trips.php?action=heartbeat&id=${encodeURIComponent(tripId)}`, { method: 'POST' }).catch(() => {});
+        }, 30000);
+      } else {
+        tripLocked = true;
+        showLockBanner(d.locked_name || d.locked_by || 'Someone');
+      }
+    })
+    .catch(() => {});
+}
+
+function releaseLock() {
+  if (lockHeartbeat) { clearInterval(lockHeartbeat); lockHeartbeat = null; }
+  if (currentTripId && !tripLocked) {
+    fetch(`trips.php?action=unlock&id=${encodeURIComponent(currentTripId)}`, { method: 'POST' }).catch(() => {});
+  }
+  tripLocked = false;
+  hideLockBanner();
+}
+
+function showLockBanner(name) {
+  $('lockBanner').style.display = '';
+  $('lockBannerText').textContent = `${name} is currently editing this trip. View only.`;
+}
+
+function hideLockBanner() {
+  $('lockBanner').style.display = 'none';
+}
 
 function fallbackCopy(text) {
   const ta = document.createElement('textarea');
@@ -1853,6 +1900,7 @@ function parseURL() {
 
 // ── Home screen ──
 function showHome() {
+  releaseLock();
   $('homeScreen').style.display = '';
   $('plannerView').style.display = 'none';
   history.replaceState(null, '', location.pathname);
@@ -1966,6 +2014,7 @@ function loadTripAndShow(id) {
         lastSavedState = JSON.stringify(getTripState());
         fetchWinds();
         loadHistoryInline();
+        acquireLock(id);
       });
     })
     .catch(() => showToast('Load failed'));
@@ -2161,6 +2210,13 @@ fetch('auth.php?action=check').then(r=>r.json()).then(d => {
 });
 
 // Initialize Google Identity Services (if available)
+// Release lock on page close
+window.addEventListener('beforeunload', () => {
+  if (currentTripId && !tripLocked) {
+    navigator.sendBeacon(`trips.php?action=unlock&id=${encodeURIComponent(currentTripId)}`);
+  }
+});
+
 window.addEventListener('load', () => {
   if (typeof google !== 'undefined' && google.accounts) {
     google.accounts.id.initialize({

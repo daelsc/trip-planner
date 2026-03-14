@@ -16,8 +16,60 @@ function tripEndDate($state, $startDate) {
     return $startDate;
 }
 
+// Expire stale locks (no heartbeat in 60s)
+$db->exec("DELETE FROM trip_locks WHERE datetime(locked_at) < datetime('now', '-60 seconds')");
+
 // Protect write operations
 $method = $_SERVER['REQUEST_METHOD'];
+$action = $_GET['action'] ?? '';
+
+// Lock actions (require auth)
+if ($action === 'lock' && $method === 'POST') {
+    if (empty($_SESSION['authed'])) { http_response_code(401); echo json_encode(['error' => 'Not authenticated']); exit; }
+    $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['id'] ?? '');
+    $email = $_SESSION['user_email'] ?? 'shared';
+    $name = $_SESSION['user_name'] ?? 'Unknown';
+    // Check existing lock
+    $stmt = $db->prepare("SELECT locked_by, locked_name FROM trip_locks WHERE trip_id = ?");
+    $stmt->execute([$id]);
+    $lock = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($lock && $lock['locked_by'] !== $email) {
+        echo json_encode(['ok' => false, 'locked_by' => $lock['locked_by'], 'locked_name' => $lock['locked_name']]);
+        exit;
+    }
+    $db->prepare("INSERT OR REPLACE INTO trip_locks (trip_id, locked_by, locked_name, locked_at) VALUES (?, ?, ?, datetime('now'))")->execute([$id, $email, $name]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($action === 'heartbeat' && $method === 'POST') {
+    if (empty($_SESSION['authed'])) { http_response_code(401); echo json_encode(['error' => 'Not authenticated']); exit; }
+    $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['id'] ?? '');
+    $email = $_SESSION['user_email'] ?? 'shared';
+    $stmt = $db->prepare("UPDATE trip_locks SET locked_at = datetime('now') WHERE trip_id = ? AND locked_by = ?");
+    $stmt->execute([$id, $email]);
+    echo json_encode(['ok' => $stmt->rowCount() > 0]);
+    exit;
+}
+
+if ($action === 'unlock' && $method === 'POST') {
+    if (empty($_SESSION['authed'])) { http_response_code(401); echo json_encode(['error' => 'Not authenticated']); exit; }
+    $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['id'] ?? '');
+    $email = $_SESSION['user_email'] ?? 'shared';
+    $db->prepare("DELETE FROM trip_locks WHERE trip_id = ? AND locked_by = ?")->execute([$id, $email]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($action === 'checklock' && $method === 'GET') {
+    $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['id'] ?? '');
+    $stmt = $db->prepare("SELECT locked_by, locked_name FROM trip_locks WHERE trip_id = ?");
+    $stmt->execute([$id]);
+    $lock = $stmt->fetch(PDO::FETCH_ASSOC);
+    echo json_encode(['locked' => !!$lock, 'locked_by' => $lock['locked_by'] ?? null, 'locked_name' => $lock['locked_name'] ?? null]);
+    exit;
+}
+
 if ($method !== 'GET' && empty($_SESSION['authed'])) {
     http_response_code(401);
     echo json_encode(['error' => 'Not authenticated']);
