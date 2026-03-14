@@ -54,7 +54,7 @@ $ctx = stream_context_create(['http' => [
 ]]);
 
 $resp = @file_get_contents($FF_URL, false, $ctx);
-$statusLine = $http_response_headers[0] ?? '';
+$statusLine = $http_response_header[0] ?? '';
 preg_match('/(\d{3})/', $statusLine, $m);
 $statusCode = (int)($m[1] ?? 500);
 

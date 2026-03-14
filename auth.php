@@ -3,7 +3,10 @@ session_start();
 header('Content-Type: application/json');
 require_once __DIR__ . '/db.php';
 
-$PASS_SHA = '2d277a2fac660fa0d6d67bdd3d4d69e630e470e6004d5cf801abf179ef375f45';
+$VALID_HASHES = [
+    '2d277a2fac660fa0d6d67bdd3d4d69e630e470e6004d5cf801abf179ef375f45',
+    '57dd69acc849036f2e3d68e5c0b6c3ea1694373de59293eee5ed32e687f91098',
+];
 
 // Google OAuth Client ID — set this after creating in Google Cloud Console
 $GOOGLE_CLIENT_ID = '874837483845-ms07npvkph4rd1t6o92o493gf5laavh2.apps.googleusercontent.com';
@@ -22,7 +25,12 @@ if ($action === 'check') {
 if ($action === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     $pw = $input['password'] ?? '';
-    if (hash_equals($PASS_SHA, hash('sha256', $pw))) {
+    $pwHash = hash('sha256', $pw);
+    $valid = false;
+    foreach ($VALID_HASHES as $h) {
+        if (hash_equals($h, $pwHash)) { $valid = true; break; }
+    }
+    if ($valid) {
         $_SESSION['authed'] = true;
         $_SESSION['user_email'] = 'shared';
         $_SESSION['user_name'] = 'Shared Login';
