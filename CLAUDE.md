@@ -20,6 +20,9 @@ Flight trip planner web app for N785QS (Gulfstream G550). PHP backend + vanilla 
 - `migrate.php` — one-time migration script to import `saved_trips/*.json` into SQLite. Run once after deploying.
 - `fbo.php` — FBO lookup by ICAO code. Scrapes AirNav, enriches with Google Places API for addresses. Caches results in `fbo_cache/` for 7 days.
 - `foreflight.php` — pushes flight schedule to ForeFlight Dispatch API.
+- `flightbridge.php` — pushes trips to FlightBridge (FBO notifications, hotels, ground transport). Authenticates via web scraping (no official API). Requires `FB_USER` and `FB_PASS` environment variables. Saves FlightBridge trip ID back to SQLite.
+- `flightbridge_services.php` — pulls ground transport providers from FlightBridge for a pushed trip. Returns JSON list of car service companies with phone/email.
+- `FLIGHTBRIDGE_API.md` — reverse-engineered FlightBridge API documentation.
 
 **Data generation** (Python, run locally):
 - `generate_airports.py` — builds `airports.json` from OurAirports CSV data. Filters to airports with paved runways >= 2000 ft, adds timezone via `timezonefinder`. Run with `pip install timezonefinder && python generate_airports.py`.

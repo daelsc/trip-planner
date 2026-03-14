@@ -360,18 +360,12 @@ button:hover { background: #2563eb; }
     <div class="sg crew-only">
       <label>Start</label><input type="number" id="pStartup" placeholder="15" min="0" max="99" title="Engine startup (min)" style="width:3.5rem">
       <label>Shut</label><input type="number" id="pShutdown" placeholder="10" min="0" max="99" title="Engine shutdown (min)" style="width:3.5rem">
-    </div>
-    <div class="sg crew-only">
+      <label>Show</label><input type="number" id="showTime" placeholder="90" min="0" max="300" title="Crew show/report time before departure (min)" style="width:3.5rem"><span class="dim">min</span>
       <label>Crew</label>
       <select id="crew">
         <option value="2" selected>2 Pilots</option>
         <option value="1">1 Pilot</option>
       </select>
-    </div>
-    <div class="sg crew-only">
-      <label>Show</label>
-      <input type="number" id="showTime" placeholder="90" min="0" max="300" title="Crew show/report time before departure (min)" style="width:3.5rem">
-      <span class="dim">min</span>
     </div>
     <input type="hidden" id="startTime">
     <input type="hidden" id="startDateStore">
@@ -379,6 +373,9 @@ button:hover { background: #2563eb; }
     <button class="btn-sm" onclick="sharePaxLink()">Share with Passengers</button>
     <button class="btn-sm" onclick="sharePlannerLink()">Share with Planner</button>
     <button class="btn-sm crew-only" onclick="try{pushToForeFlight();}catch(e){alert('Error: '+e.message);}">Push to ForeFlight</button>
+    <button class="btn-sm crew-only" onclick="try{pushToFlightBridge();}catch(e){alert('Error: '+e.message);}">Push to FlightBridge</button>
+  </div>
+  <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
     <div class="trips-dropdown">
       <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
       <div class="trips-menu" id="tripsMenu"></div>
@@ -731,11 +728,18 @@ function searchAirports(q) {
   const u = q.toUpperCase();
   const res = [];
   for (const a of airports) {
-    if (res.length >= 10) break;
+    if (res.length >= 30) break;
     if (a.icao.startsWith(u) || a.name.toUpperCase().includes(u) || (a.city && a.city.toUpperCase().includes(u)))
       res.push(a);
   }
-  return res;
+  // Prioritize standard 4-letter ICAO codes over numbered/short codes, then by runway length
+  res.sort((a, b) => {
+    const aStd = /^[A-Z]{4}$/.test(a.icao) ? 0 : 1;
+    const bStd = /^[A-Z]{4}$/.test(b.icao) ? 0 : 1;
+    if (aStd !== bStd) return aStd - bStd;
+    return (b.rwy || 0) - (a.rwy || 0);
+  });
+  return res.slice(0, 10);
 }
 
 function setupAC(input, li, field) {
@@ -1129,7 +1133,7 @@ function recalc() {
       <td class="td-flight mono"><span class="mobile-label">Flight </span>${fmtDur(flightMin)}${windHtml}</td>
       <td class="td-block mono"><span class="mobile-label">Block </span>${fmtDur(blockMin)}</td>
       <td class="td-pax"><select class="pax-select" data-l="${i}" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.2rem;border-radius:3px;font-size:0.8rem">${Array.from({length:20},(_,n)=>`<option value="${n}"${n===leg.pax?' selected':''}>${n}</option>`).join('')}</select>${leg.pax > 0 ? '<div class="pax-names" style="margin-top:2px">' + Array.from({length:leg.pax},(_,n)=>`<input class="leg-extra-input pax-name-input" data-l="${i}" data-pn="${n}" value="${esc(leg.paxNames[n]||'')}" placeholder="Passenger ${n+1}" style="display:block;margin-top:1px">`).join('') + '</div>' : ''}</td>
-      <td class="td-food"><input class="leg-extra-input food-input" data-l="${i}" value="${esc(leg.food)}" placeholder="Food..."><br><input class="leg-extra-input transport-input" data-l="${i}" value="${esc(leg.groundTransport)}" placeholder="Transport..."></td>
+      <td class="td-food"><input class="leg-extra-input food-input" data-l="${i}" value="${esc(leg.food)}" placeholder="Food..."><br><div style="display:flex;gap:2px;align-items:center"><input class="leg-extra-input transport-input" data-l="${i}" value="${esc(leg.groundTransport)}" placeholder="Transport..." style="flex:1">${fbServices && fbServices[i] ? `<button class="btn-icon" onclick="showFbProviders(${i})" title="FlightBridge ground transport" style="font-size:0.65rem;color:#60a5fa;padding:1px 3px">FB</button>` : ''}</div></td>
       <td class="td-depart"><span class="mobile-label">Depart<br></span>${fmtTimeCell(departTime, depTz)}</td>
       <td class="td-arrive"><span class="mobile-label">Arrive<br></span>${fmtTimeCell(arriveTime, arrTz)}</td>
       <td class="td-actions">
@@ -1586,13 +1590,14 @@ function getTripState() {
 function doSave(name, id) {
   const body = { name, state: getTripState() };
   if (id) body.id = id;
-  fetch('trips.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+  return fetch('trips.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(r => r.json())
     .then(d => {
       currentTripId = d.id;
       lastSavedState = JSON.stringify(getTripState());
       showToast('Saved');
       loadHistoryInline();
+      return d;
     })
     .catch(() => showToast('Save failed'));
 }
@@ -1628,9 +1633,11 @@ function toggleTripsMenu() {
   fetch('trips.php')
     .then(r => r.json())
     .then(trips => {
-      if (!trips.length) { menu.innerHTML = '<div class="trip-empty">No saved trips</div>'; return; }
+      const today = new Date().toISOString().slice(0, 10);
+      const upcoming = trips.filter(t => !t.date || t.date >= today);
+      if (!upcoming.length) { menu.innerHTML = '<div class="trip-empty">No upcoming trips</div>'; return; }
       menu.innerHTML = '';
-      for (const t of trips) {
+      for (const t of upcoming) {
         const item = document.createElement('div');
         item.className = 'trip-item';
         const dateLabel = fmtTripDate(t.date);
@@ -1816,6 +1823,123 @@ function pushToForeFlight() {
       })
       .catch(() => showToast('ForeFlight push failed'));
   });
+}
+
+function pushToFlightBridge() {
+  if (!legs.length) { alert('Add legs before pushing to FlightBridge.'); return; }
+  if (!lastLegCalc.length) { alert('No calculated leg data. Make sure a start time is set.'); return; }
+  const validLegs = [];
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i], lc = lastLegCalc[i];
+    if (!leg.dep || !leg.arr || !lc?.departTime) continue;
+    validLegs.push({ idx: i, leg, lc });
+  }
+  if (!validLegs.length) { alert('No valid legs to push. Make sure airports and a start time are set.'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'ff-overlay';
+  let checkboxes = '';
+  for (const v of validLegs) {
+    const depTz = aptIdx[v.leg.dep]?.tz || 'UTC';
+    const depLocal = v.lc.departTime.toLocaleString('en-US', { timeZone: depTz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const fboInfo = v.leg.arrFbo ? ` <span style="color:#64748b;font-size:0.72rem">FBO: ${v.leg.arrFbo}</span>` : '';
+    checkboxes += `<label><input type="checkbox" checked value="${v.idx}"> ${v.leg.dep} → ${v.leg.arr} &nbsp;<span style="color:#64748b;font-size:0.78rem">${depLocal}</span>${fboInfo}</label>`;
+  }
+  overlay.innerHTML = `<div class="ff-dialog"><h3>Push to FlightBridge</h3><p style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.75rem">Creates a trip in FlightBridge with FBO notifications, hotel, and ground transport.</p>${checkboxes}<div class="ff-buttons"><button class="ff-cancel" onclick="this.closest('.ff-overlay').remove()">Cancel</button><button class="ff-push" id="fbPushBtn">Push Selected</button></div></div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('fbPushBtn').addEventListener('click', () => {
+    const checked = overlay.querySelectorAll('input[type=checkbox]:checked');
+    if (!checked.length) { showToast('No legs selected'); return; }
+    const fbLegs = [];
+    checked.forEach(cb => {
+      const i = parseInt(cb.value);
+      const leg = legs[i], lc = lastLegCalc[i];
+      // Format as local times in each airport's timezone for FlightBridge
+      const depTz = aptIdx[leg.dep]?.tz || 'UTC';
+      const arrTz = aptIdx[leg.arr]?.tz || 'UTC';
+      function fmtLocalDt(dt, tz) {
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(dt);
+        const p = {}; parts.forEach(x => p[x.type] = x.value);
+        return { date: `${+p.month}/${+p.day}/${p.year}`, time: `${p.hour}:${p.minute}` };
+      }
+      const depLocal = fmtLocalDt(lc.departTime, depTz);
+      const arrLocal = lc.arriveTime ? fmtLocalDt(lc.arriveTime, arrTz) : null;
+      fbLegs.push({
+        departure: leg.dep,
+        arrival: leg.arr,
+        departureDate: depLocal.date,
+        departureTime: depLocal.time,
+        arrivalDate: arrLocal ? arrLocal.date : '',
+        arrivalTime: arrLocal ? arrLocal.time : '',
+        departureFbo: leg.depFbo || '',
+        arrivalFbo: leg.arrFbo || '',
+        pax: leg.pax || 0,
+      });
+    });
+    overlay.remove();
+    // Always save trip first to ensure we have a localTripId and latest state
+    showToast('Saving trip...');
+    const currentRoute = legs.map(l => l.dep).concat(legs.length ? [legs[legs.length-1].arr] : []).filter(Boolean).join(' → ');
+    const saveName = currentRoute || 'New Trip';
+    const saveId = currentTripId || null;
+    doSave(saveName, saveId).then(saved => {
+      if (!saved || !currentTripId) { showToast('Save failed — cannot push to FlightBridge'); return; }
+      showToast('Pushing to FlightBridge...');
+      fetch('flightbridge.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ legs: fbLegs, tripNumber: currentTripId || '', localTripId: currentTripId || '' }) })
+      .then(r => r.json().then(d => ({ status: r.status, data: d })))
+      .then(({ status, data }) => {
+        if (status === 200 && data.success) {
+          const saved = (data.results || []).filter(r => r.status === 'saved').length;
+          const action = data.updated ? 'updated' : 'pushed';
+          showToast(`FlightBridge: ${saved} leg${saved !== 1 ? 's' : ''} ${action}` + (data.tripId ? ` (Trip #${data.tripId})` : ''));
+          if (currentTripId) fetchFlightBridgeServices();
+        } else {
+          const errDetail = data.debug ? ' | ' + JSON.stringify(data.debug) : '';
+          showToast('FlightBridge error: ' + (data.error || `status=${status} success=${data.success}`) + errDetail);
+        }
+      })
+      .catch(() => showToast('FlightBridge push failed'));
+    }); // end doSave.then
+  });
+}
+
+let fbServices = null;
+function fetchFlightBridgeServices() {
+  if (!currentTripId) return;
+  fetch('flightbridge_services.php?tripId=' + encodeURIComponent(currentTripId))
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success || !data.groundServices) return;
+      fbServices = data.groundServices;
+      recalc();
+    })
+    .catch(() => {});
+}
+
+function showFbProviders(legIdx) {
+  if (!fbServices || !fbServices[legIdx]) return;
+  const svc = fbServices[legIdx];
+  if (!svc.providers || !svc.providers.length) { showToast('No ground transport providers found'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'ff-overlay';
+  let rows = '';
+  for (const p of svc.providers) {
+    const phone = p.phone ? `<a href="tel:${p.phone.replace(/[^\d+]/g,'')}" style="color:#60a5fa">${p.phone}</a>` : '';
+    const badge = p.registered ? '<span style="color:#22c55e;font-size:0.7rem">&#10003;</span> ' : '';
+    rows += `<div style="padding:0.4rem 0;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;cursor:pointer" class="fb-provider-row" data-name="${p.name.replace(/"/g,'&quot;')}">
+      <div><div style="font-size:0.85rem;color:#e2e8f0">${badge}${p.name}</div>${phone ? `<div style="font-size:0.75rem">${phone}</div>` : ''}</div>
+      <button class="btn-sm" style="font-size:0.7rem;padding:0.2rem 0.5rem;white-space:nowrap" onclick="event.stopPropagation();selectFbProvider(${legIdx},'${p.name.replace(/'/g,"\\'")}');this.closest('.ff-overlay').remove()">Select</button>
+    </div>`;
+  }
+  overlay.innerHTML = `<div class="ff-dialog" style="width:400px;max-height:80vh;overflow-y:auto"><h3>Ground Transport — Leg ${legIdx+1}</h3><p style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.5rem">${svc.providers.length} providers from FlightBridge</p>${rows}<div class="ff-buttons" style="margin-top:0.75rem"><button class="ff-cancel" onclick="this.closest('.ff-overlay').remove()">Close</button></div></div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function selectFbProvider(legIdx, name) {
+  legs[legIdx].groundTransport = name;
+  recalc();
+  showToast('Selected: ' + name);
 }
 
 function parseURL() {

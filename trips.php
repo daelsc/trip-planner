@@ -78,7 +78,7 @@ if ($method !== 'GET' && empty($_SESSION['authed'])) {
 
 // List all saved trips
 if ($method === 'GET' && !isset($_GET['id'])) {
-    $rows = $db->query("SELECT id, number, name, route, purpose, cargo, state, version, saved_at, saved_by FROM trips ORDER BY saved_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+    $rows = $db->query("SELECT id, number, name, route, purpose, cargo, state, version, saved_at, saved_by, flightbridge_trip_id FROM trips ORDER BY saved_at DESC")->fetchAll(PDO::FETCH_ASSOC);
     $trips = [];
     foreach ($rows as $r) {
         $state = json_decode($r['state'], true) ?: [];
@@ -99,6 +99,7 @@ if ($method === 'GET' && !isset($_GET['id'])) {
             'saved' => $r['saved_at'] ?? '',
             'savedBy' => $r['saved_by'] ?? '',
             'version' => $r['version'] ?? 1,
+            'flightbridgeTripId' => $r['flightbridge_trip_id'] ?? null,
         ];
     }
     // Sort chronologically by trip date (earliest first), then by number

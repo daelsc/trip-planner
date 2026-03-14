@@ -26,6 +26,12 @@ function getDb() {
         saved_by TEXT
     )");
 
+    // Add flightbridge_trip_id column if missing
+    $cols = $db->query("PRAGMA table_info(trips)")->fetchAll(PDO::FETCH_COLUMN, 1);
+    if (!in_array('flightbridge_trip_id', $cols)) {
+        $db->exec("ALTER TABLE trips ADD COLUMN flightbridge_trip_id TEXT");
+    }
+
     $db->exec("CREATE TABLE IF NOT EXISTS trip_locks (
         trip_id TEXT PRIMARY KEY,
         locked_by TEXT NOT NULL,
