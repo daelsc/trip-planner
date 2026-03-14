@@ -5,6 +5,17 @@ require_once __DIR__ . '/db.php';
 
 $db = getDb();
 
+function tripEndDate($state, $startDate) {
+    // Best effort: use last departure date override, or fall back to start date
+    if (!empty($state['dd'])) {
+        $dates = explode(',', $state['dd']);
+        for ($i = count($dates) - 1; $i >= 0; $i--) {
+            if (!empty($dates[$i])) return $dates[$i];
+        }
+    }
+    return $startDate;
+}
+
 // Protect write operations
 $method = $_SERVER['REQUEST_METHOD'];
 if ($method !== 'GET' && empty($_SESSION['authed'])) {
@@ -30,7 +41,9 @@ if ($method === 'GET' && !isset($_GET['id'])) {
             'route' => $r['route'] ?? '',
             'purpose' => $r['purpose'] ?? '',
             'cargo' => $r['cargo'] ?? '',
+            'aircraft' => $state['a'] ?? 'G550',
             'date' => $tripDate,
+            'endDate' => tripEndDate($state, $tripDate),
             'saved' => $r['saved_at'] ?? '',
             'savedBy' => $r['saved_by'] ?? '',
             'version' => $r['version'] ?? 1,

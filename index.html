@@ -315,14 +315,17 @@ button:hover { background: #2563eb; }
   <h1>Trip Planner</h1>
   <div style="margin-bottom:1rem">
     <label style="font-size:0.8rem;color:#94a3b8;margin-right:0.4rem">Aircraft</label>
-    <select id="homeAircraft" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.3rem 0.45rem;border-radius:4px;font-size:0.85rem">
+    <select id="homeAircraft" onchange="loadHomeTrips()" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.3rem 0.45rem;border-radius:4px;font-size:0.85rem">
       <option value="G550" selected>Gulfstream G550</option>
       <option value="PC12">Pilatus PC-12</option>
       <option value="custom">Custom</option>
     </select>
   </div>
   <div id="homeTrips" class="home-trips"></div>
-  <button class="home-new" onclick="startNewTrip()">+ New Trip</button>
+  <div style="display:flex;gap:1rem;align-items:center;margin-bottom:1rem">
+    <button class="home-new" onclick="startNewTrip()">+ New Trip</button>
+    <label style="font-size:0.8rem;color:#64748b;cursor:pointer"><input type="checkbox" id="showPastTrips" onchange="loadHomeTrips()" style="accent-color:#3b82f6;margin-right:0.3rem">Show past trips</label>
+  </div>
 </div>
 
 <!-- Planner (hidden until trip selected) -->
@@ -658,9 +661,14 @@ function fboSelectHtml(icao, legIdx, field, selected) {
     fetchFbos(icao);
     return c?.loading ? '<div class="fbo-loading">Loading FBOs...</div>' : '';
   }
-  if (!c.fbos.length) return '<div class="fbo-loading dim">No FBOs</div>';
-  // Apply default if nothing selected yet
-  const effective = selected || DEFAULT_FBOS[icao] || '';
+  const isOther = selected === '__other__';
+  // Apply default if nothing selected yet and FBOs exist
+  const effective = selected || (c.fbos.length ? (DEFAULT_FBOS[icao] || '') : '');
+  // Always show select even if no FBOs (user can pick Other)
+  if (!c.fbos.length && !isOther) {
+    let html = `<select class="fbo-select" data-l="${legIdx}" data-fbo="${field}"><option value="">No FBOs found</option><option value="__other__">Other...</option></select>`;
+    return html;
+  }
   // If we just applied a default, persist it to the leg
   if (!selected && effective && legIdx >= 0 && legs[legIdx]) {
     legs[legIdx][field] = effective;
@@ -670,9 +678,20 @@ function fboSelectHtml(icao, legIdx, field, selected) {
   for (const f of c.fbos) {
     const isCaa = caaFbo && f.name.includes(caaFbo);
     const label = isCaa ? `★ ${f.name} (CAA)` : f.name;
-    html += `<option value="${esc(f.name)}"${f.name === effective ? ' selected' : ''}>${esc(label)}</option>`;
+    html += `<option value="${esc(f.name)}"${f.name === effective && !isOther ? ' selected' : ''}>${esc(label)}</option>`;
   }
+  html += `<option value="__other__"${isOther ? ' selected' : ''}>Other...</option>`;
   html += '</select>';
+  // Custom FBO fields when "Other" is selected
+  if (isOther) {
+    const customField = field === 'depFbo' ? 'depFboCustom' : 'arrFboCustom';
+    const custom = (legIdx >= 0 && legs[legIdx]) ? (legs[legIdx][customField] || {}) : {};
+    html += `<div class="fbo-custom-fields" style="margin-top:2px">`;
+    html += `<input class="leg-extra-input fbo-custom-input" data-l="${legIdx}" data-cf="${customField}" data-ck="name" value="${esc(custom.name||'')}" placeholder="FBO Name" style="display:block;margin-top:1px">`;
+    html += `<input class="leg-extra-input fbo-custom-input" data-l="${legIdx}" data-cf="${customField}" data-ck="address" value="${esc(custom.address||'')}" placeholder="Address" style="display:block;margin-top:1px">`;
+    html += `<input class="leg-extra-input fbo-custom-input" data-l="${legIdx}" data-cf="${customField}" data-ck="phone" value="${esc(custom.phone||'')}" placeholder="Phone" style="display:block;margin-top:1px">`;
+    html += `</div>`;
+  }
   return html;
 }
 
@@ -759,7 +778,7 @@ function autoPopulateTZ() {
 // ── Leg management ──
 function addLeg(dep, arr, ground, rest, nextDep) {
   const lastArr = legs.length > 0 ? legs[legs.length-1].arr : '';
-  legs.push({ dep: dep||lastArr, arr: arr||'', groundMin: ground ?? null, rest: rest||false, wind: null, nextDep: nextDep||'', depFbo: '', arrFbo: '', pax: 0, paxNames: [], food: '', groundTransport: '' });
+  legs.push({ dep: dep||lastArr, arr: arr||'', groundMin: ground ?? null, rest: rest||false, wind: null, nextDep: nextDep||'', depFbo: '', arrFbo: '', depFboCustom: {}, arrFboCustom: {}, pax: 0, paxNames: [], food: '', groundTransport: '' });
   recalc();
 }
 function removeLeg(i) { legs.splice(i, 1); recalc(); }
@@ -775,7 +794,7 @@ function loadRoute() {
   if (codes.length < 2) return;
   legs = [];
   for (let i = 0; i < codes.length - 1; i++) {
-    legs.push({ dep: codes[i], arr: codes[i+1], groundMin: null, rest: false, wind: null, nextDep: '', depFbo: '', arrFbo: '', pax: 0, paxNames: [], food: '', groundTransport: '' });
+    legs.push({ dep: codes[i], arr: codes[i+1], groundMin: null, rest: false, wind: null, nextDep: '', depFbo: '', arrFbo: '', depFboCustom: {}, arrFboCustom: {}, pax: 0, paxNames: [], food: '', groundTransport: '' });
   }
   input.value = '';
   recalc();
@@ -798,6 +817,20 @@ function altToPressure(ft) {
   return best[1];
 }
 
+// Interpolate waypoints along a great circle route
+function interpolateWaypoints(lat1, lon1, lat2, lon2, numPoints) {
+  const points = [];
+  for (let i = 0; i <= numPoints; i++) {
+    const f = i / numPoints;
+    // Simple linear interpolation (good enough for wind sampling)
+    points.push({
+      lat: lat1 + (lat2 - lat1) * f,
+      lon: lon1 + (lon2 - lon1) * f,
+    });
+  }
+  return points;
+}
+
 async function fetchWinds() {
   if (windsLoading) return;
   if (!legs.some(l => aptIdx[l.dep] && aptIdx[l.arr])) return;
@@ -810,26 +843,65 @@ async function fetchWinds() {
     const fetches = legs.map(async (leg, i) => {
       const dep = aptIdx[leg.dep], arr = aptIdx[leg.arr];
       if (!dep || !arr) { leg.wind = null; return; }
-      const midLat = ((dep.lat + arr.lat) / 2).toFixed(2);
-      const midLon = ((dep.lon + arr.lon) / 2).toFixed(2);
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${midLat}&longitude=${midLon}&hourly=wind_speed_${hPa}hPa,wind_direction_${hPa}hPa&wind_speed_unit=kn&forecast_days=2&timezone=UTC`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-      const speeds = data.hourly[`wind_speed_${hPa}hPa`];
-      const dirs = data.hourly[`wind_direction_${hPa}hPa`];
-      const times = data.hourly.time;
+
+      const dist = haversine(dep.lat, dep.lon, arr.lat, arr.lon);
+      // Sample every ~300nm, minimum 1 point (midpoint), max 8
+      const numSegments = Math.max(1, Math.min(8, Math.round(dist / 300)));
+      const waypoints = interpolateWaypoints(dep.lat, dep.lon, arr.lat, arr.lon, numSegments);
+      // Sample at segment midpoints (skip endpoints)
+      const samplePoints = [];
+      for (let s = 0; s < numSegments; s++) {
+        samplePoints.push({
+          lat: ((waypoints[s].lat + waypoints[s+1].lat) / 2).toFixed(2),
+          lon: ((waypoints[s].lon + waypoints[s+1].lon) / 2).toFixed(2),
+        });
+      }
+
       let targetHour = new Date().toISOString().slice(0,13) + ':00';
       const depTime = legDepartures[i];
       if (depTime) targetHour = depTime.toISOString().slice(0,13) + ':00';
-      let bestIdx = 0;
-      for (let t = 0; t < times.length; t++) {
-        if (times[t] <= targetHour) bestIdx = t;
-      }
-      const windSpd = speeds[bestIdx];
-      const windDir = dirs[bestIdx];
+
       const track = bearing(dep.lat, dep.lon, arr.lat, arr.lon);
-      const hw = windSpd * Math.cos(toRad(windDir - track));
-      leg.wind = { dir: Math.round(windDir), speed: Math.round(windSpd), headwind: Math.round(hw), hPa };
+
+      // Fetch wind at each sample point
+      const windResults = await Promise.all(samplePoints.map(async pt => {
+        try {
+          const url = `https://api.open-meteo.com/v1/forecast?latitude=${pt.lat}&longitude=${pt.lon}&hourly=wind_speed_${hPa}hPa,wind_direction_${hPa}hPa&wind_speed_unit=kn&forecast_days=2&timezone=UTC`;
+          const resp = await fetch(url);
+          const data = await resp.json();
+          const speeds = data.hourly[`wind_speed_${hPa}hPa`];
+          const dirs = data.hourly[`wind_direction_${hPa}hPa`];
+          const times = data.hourly.time;
+          let bestIdx = 0;
+          for (let t = 0; t < times.length; t++) {
+            if (times[t] <= targetHour) bestIdx = t;
+          }
+          return { speed: speeds[bestIdx], dir: dirs[bestIdx] };
+        } catch { return null; }
+      }));
+
+      // Average the headwind components across all sample points
+      const valid = windResults.filter(w => w != null);
+      if (!valid.length) { leg.wind = null; return; }
+
+      let totalHw = 0, totalSpd = 0, totalDir = 0;
+      for (const w of valid) {
+        const hw = w.speed * Math.cos(toRad(w.dir - track));
+        totalHw += hw;
+        totalSpd += w.speed;
+        totalDir += w.dir;
+      }
+      const avgHw = totalHw / valid.length;
+      const avgSpd = totalSpd / valid.length;
+      const avgDir = totalDir / valid.length;
+
+      leg.wind = {
+        dir: Math.round(avgDir),
+        speed: Math.round(avgSpd),
+        headwind: Math.round(avgHw),
+        hPa,
+        samples: valid.length,
+      };
     });
     await Promise.all(fetches);
   } catch (e) {
@@ -983,7 +1055,7 @@ function recalc() {
         else if (hw > 0) windHtml = `<div class="wind-info wind-head">${leg.wind.dir}°/${leg.wind.speed}kt ▼${hw}kt</div>`;
         else windHtml = `<div class="wind-info wind-tail">${leg.wind.dir}°/${leg.wind.speed}kt ▲${Math.abs(hw)}kt</div>`;
         const effectiveGs = (distNm != null && flightMin > 0) ? Math.round(distNm / (flightMin / 60)) : Math.round(profile.speed - hw);
-        windHtml += `<div class="wind-info dim">GS ${effectiveGs} kts</div>`;
+        windHtml += `<div class="wind-info dim">GS ${effectiveGs} kts${leg.wind.samples > 1 ? ` (${leg.wind.samples}pt avg)` : ''}</div>`;
       } else {
         if (Math.abs(hw) < 3) windHtml = `<div class="wind-info wind-calm">calm</div>`;
         else if (hw > 0) windHtml = `<div class="wind-info wind-head">▼${hw}kt</div>`;
@@ -1103,6 +1175,16 @@ function recalc() {
       sel.addEventListener('change', () => {
         const li = +sel.dataset.l, fld = sel.dataset.fbo;
         legs[li][fld] = sel.value;
+        if (sel.value === '__other__') recalc(); // show custom fields
+      });
+    });
+
+    // Setup custom FBO field handlers
+    tr.querySelectorAll('.fbo-custom-input').forEach(inp => {
+      inp.addEventListener('change', function() {
+        const li = +this.dataset.l, cf = this.dataset.cf, ck = this.dataset.ck;
+        if (!legs[li][cf]) legs[li][cf] = {};
+        legs[li][cf][ck] = this.value;
       });
     });
 
@@ -1301,6 +1383,7 @@ function updateCrew(legCalc, crewCount, showMin) {
 
   let dutyStart = new Date(firstDepart.getTime() - showMin * 60000);
   let dutyDay = 1;
+  let dutyOrigin = legs[0]?.dep || '';
   let dutyFlightMin = 0;
   const alertList = [];
   const daySummaries = []; // for passenger view
@@ -1308,7 +1391,7 @@ function updateCrew(legCalc, crewCount, showMin) {
   function addDutyHeader() {
     const htr = document.createElement('tr');
     htr.innerHTML = `<td colspan="4" style="color:#818cf8;font-weight:600;padding:0.5rem;border-bottom:1px solid #334155">
-      Duty Day ${dutyDay} — starts ${dutyStart ? fmtDur((legCalc[0]?.departTime ? 0 : 0)) : ''} ${dutyStart ? new Date(dutyStart).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'})+'Z' : ''}</td>`;
+      Duty Day ${dutyDay} — ${esc(dutyOrigin)} ${dutyStart ? new Date(dutyStart).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'})+'Z' : ''}</td>`;
     tbody.appendChild(htr);
   }
   addDutyHeader();
@@ -1367,16 +1450,17 @@ function updateCrew(legCalc, crewCount, showMin) {
       const offDuty = new Date(lc.arriveTime.getTime() + 30 * 60000);
       const onDuty = new Date(legCalc[i+1].departTime.getTime() - showMin * 60000);
       const restMin = (onDuty - offDuty) / 60000;
-      daySummaries.push({ day: dutyDay, flightMin: dutyFlightMin, dutyMin, maxFlight, maxDuty, restAfter: restMin });
+      daySummaries.push({ day: dutyDay, origin: dutyOrigin, flightMin: dutyFlightMin, dutyMin, maxFlight, maxDuty, restAfter: restMin });
       dutyDay++;
       dutyStart = onDuty;
+      dutyOrigin = legs[i+1]?.dep || '';
       dutyFlightMin = 0;
       addDutyHeader();
     }
   }
 
   // Final duty day summary (no rest after last day)
-  daySummaries.push({ day: dutyDay, flightMin: lastFlightMin, dutyMin: lastDutyMin, maxFlight, maxDuty, restAfter: null });
+  daySummaries.push({ day: dutyDay, origin: dutyOrigin, flightMin: lastFlightMin, dutyMin: lastDutyMin, maxFlight, maxDuty, restAfter: null });
 
   for (const a of alertList) {
     const div = document.createElement('div');
@@ -1398,7 +1482,7 @@ function updateCrew(legCalc, crewCount, showMin) {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>Day ${ds.day}</td>
+      <td>Day ${ds.day} — ${esc(ds.origin)}</td>
       <td class="mono">${fmtDur(ds.flightMin)} / ${fmtDur(ds.maxFlight)}</td>
       <td class="mono">${fmtDur(ds.dutyMin)} / ${fmtDur(ds.maxDuty)}</td>
       <td class="mono">${ds.restAfter != null ? fmtDur(ds.restAfter) : '—'}</td>
@@ -1469,6 +1553,11 @@ function buildURL() {
     const afbos = legs.map(l => l.arrFbo || '');
     if (dfbos.some(f => f)) p.set('df', dfbos.join('|'));
     if (afbos.some(f => f)) p.set('af', afbos.join('|'));
+    // Custom FBO details (name~address~phone per leg, pipe-separated)
+    const dcf = legs.map(l => l.depFboCustom && l.depFbo === '__other__' ? [l.depFboCustom.name||'',l.depFboCustom.address||'',l.depFboCustom.phone||''].join('~') : '');
+    const acf = legs.map(l => l.arrFboCustom && l.arrFbo === '__other__' ? [l.arrFboCustom.name||'',l.arrFboCustom.address||'',l.arrFboCustom.phone||''].join('~') : '');
+    if (dcf.some(f => f)) p.set('dcf', dcf.join('|'));
+    if (acf.some(f => f)) p.set('acf', acf.join('|'));
     const paxCounts = legs.map(l => l.pax || 0);
     if (paxCounts.some(n => n > 0)) p.set('px', paxCounts.join(','));
     // Per-leg food & transport
@@ -1731,8 +1820,12 @@ function parseURL() {
     const foods = p.has('fd') ? p.get('fd').split('|') : [];
     const transports = p.has('gt') ? p.get('gt').split('|') : [];
     const paxNamesRaw = p.has('pn') ? p.get('pn').split('|') : [];
+    const dcfRaw = p.has('dcf') ? p.get('dcf').split('|') : [];
+    const acfRaw = p.has('acf') ? p.get('acf').split('|') : [];
     legs = pairs.map((pair, i) => {
       const [dep, arr] = pair.split('-');
+      const dcfParts = dcfRaw[i] ? dcfRaw[i].split('~') : [];
+      const acfParts = acfRaw[i] ? acfRaw[i].split('~') : [];
       const names = paxNamesRaw[i] ? paxNamesRaw[i].split(';').filter(Boolean) : [];
       const count = pxCounts[i] ? +pxCounts[i] : 0;
       // Ensure names array matches pax count
@@ -1747,6 +1840,8 @@ function parseURL() {
         nextDepDate: depDates[i] || '',
         depFbo: dfbos[i] || '',
         arrFbo: afbos[i] || '',
+        depFboCustom: dcfParts.length ? { name: dcfParts[0]||'', address: dcfParts[1]||'', phone: dcfParts[2]||'' } : {},
+        arrFboCustom: acfParts.length ? { name: acfParts[0]||'', address: acfParts[1]||'', phone: acfParts[2]||'' } : {},
         pax: count,
         paxNames: names,
         food: foods[i] || '',
@@ -1813,10 +1908,19 @@ function startNewTrip() {
 
 function loadHomeTrips() {
   const container = $('homeTrips');
+  const selectedAircraft = $('homeAircraft').value;
   container.innerHTML = '<div class="home-empty">Loading...</div>';
-  fetch('trips.php').then(r => r.json()).then(trips => {
+  fetch('trips.php').then(r => r.json()).then(allTrips => {
+    const today = new Date().toISOString().slice(0, 10);
+    const showPast = $('showPastTrips').checked;
+    const trips = allTrips.filter(t => {
+      if (t.aircraft !== selectedAircraft) return false;
+      if (showPast) return true;
+      const endDate = t.endDate || t.date || '';
+      return !endDate || endDate >= today;
+    });
     if (!trips.length) {
-      container.innerHTML = '<div class="home-empty">No saved trips yet.</div>';
+      container.innerHTML = '<div class="home-empty">No saved trips for this aircraft.</div>';
       return;
     }
     container.innerHTML = '';

@@ -162,6 +162,8 @@ async function loadAndRender() {
   const depDates = p.dd ? p.dd.split(',') : [];
   const dfbos = p.df ? p.df.split('|') : [];
   const afbos = p.af ? p.af.split('|') : [];
+  const dcfRaw = p.dcf ? p.dcf.split('|') : [];
+  const acfRaw = p.acf ? p.acf.split('|') : [];
   const pxCounts = p.px ? p.px.split(',') : [];
   const paxNamesRaw = p.pn ? p.pn.split('|') : [];
 
@@ -174,6 +176,8 @@ async function loadAndRender() {
       nextDepDate: depDates[i] || '',
       depFbo: dfbos[i] || '',
       arrFbo: afbos[i] || '',
+      depFboCustom: dcfRaw[i] ? (p => ({name:p[0]||'',address:p[1]||'',phone:p[2]||''}))(dcfRaw[i].split('~')) : {},
+      arrFboCustom: acfRaw[i] ? (p => ({name:p[0]||'',address:p[1]||'',phone:p[2]||''}))(acfRaw[i].split('~')) : {},
       pax: pxCounts[i] ? +pxCounts[i] : 0,
       paxNames: paxNamesRaw[i] ? paxNamesRaw[i].split(';').filter(Boolean) : [],
     };
@@ -233,10 +237,15 @@ async function loadAndRender() {
 
     let depFboInfo = null, arrFboInfo = null;
     const depFboName = (i === 0) ? leg.depFbo : (legs[i-1]?.arrFbo || '');
-    if (depFboName && fboCache[leg.dep]) {
+    const depFboCustomSrc = (i === 0) ? leg.depFboCustom : (legs[i-1]?.arrFboCustom || {});
+    if (depFboName === '__other__' && depFboCustomSrc?.name) {
+      depFboInfo = { name: depFboCustomSrc.name };
+    } else if (depFboName && fboCache[leg.dep]) {
       depFboInfo = fboCache[leg.dep].find(f => f.name === depFboName) || null;
     }
-    if (leg.arrFbo && fboCache[leg.arr]) {
+    if (leg.arrFbo === '__other__' && leg.arrFboCustom?.name) {
+      arrFboInfo = { name: leg.arrFboCustom.name };
+    } else if (leg.arrFbo && fboCache[leg.arr]) {
       arrFboInfo = fboCache[leg.arr].find(f => f.name === leg.arrFbo) || null;
     }
 
