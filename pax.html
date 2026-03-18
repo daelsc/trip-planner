@@ -32,8 +32,8 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 .trip-details { font-size: 0.85rem; color: #444; margin-bottom: 1rem; }
 .trip-details span { margin-right: 1.5rem; }
 .trip-details strong { color: #1a1a1a; }
-.leg-extras { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #eee; font-size: 0.8rem; color: #666; }
-.leg-extras span { margin-right: 1rem; }
+.leg-services { margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px solid #eee; font-size: 0.78rem; color: #666; }
+.leg-services div { margin-bottom: 0.15rem; }
 .no-trip { text-align: center; padding: 3rem; color: #999; }
 .loading { text-align: center; padding: 3rem; color: #999; }
 @media print {
@@ -62,12 +62,6 @@ function haversine(lat1, lon1, lat2, lon2) {
   const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
   const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
   return 2 * R_NM * Math.asin(Math.sqrt(a));
-}
-function bearing(lat1, lon1, lat2, lon2) {
-  const dLon = toRad(lon2-lon1), la1 = toRad(lat1), la2 = toRad(lat2);
-  const y = Math.sin(dLon)*Math.cos(la2);
-  const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
-  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
 }
 
 function fmtDur(min) {
@@ -175,7 +169,9 @@ async function loadAndRender() {
   const acfRaw = p.acf ? p.acf.split('|') : [];
   const pxCounts = p.px ? p.px.split(',') : [];
   const foods = p.fd ? p.fd.split('|') : [];
-  const transports = p.gt ? p.gt.split('|') : [];
+  const depTransports = p.gtd ? p.gtd.split('|') : [];
+  const arrTransports = p.gta ? p.gta.split('|') : [];
+  const legacyTransports = p.gt ? p.gt.split('|') : [];
   const paxNamesRaw = p.pn ? p.pn.split('|') : [];
   const tripPilot = p.pi || 'David Scheinman';
   const tripPilotPhone = p.pp || '650-387-1111';
@@ -195,8 +191,24 @@ async function loadAndRender() {
       arrFboCustom: acfRaw[i] ? (p => ({name:p[0]||'',address:p[1]||'',phone:p[2]||''}))(acfRaw[i].split('~')) : {},
       pax: pxCounts[i] ? +pxCounts[i] : 0,
       paxNames: paxNamesRaw[i] ? paxNamesRaw[i].split(';').filter(Boolean) : [],
-      food: foods[i] || '',
-      groundTransport: transports[i] || '',
+      food: (() => {
+        const raw = foods[i] || '';
+        if (!raw.includes('~')) return { desc: raw, link: '', time: '' };
+        const fp = raw.split('~');
+        return { desc: fp[0]||'', link: fp[1]||'', time: fp[2]||'' };
+      })(),
+      depTransport: (() => {
+        const raw = depTransports[i] || legacyTransports[i] || '';
+        if (!raw.includes('~')) return { provider: raw, contact: '', location: '' };
+        const tp = raw.split('~');
+        return { provider: tp[0]||'', contact: tp[1]||'', location: tp[2]||'' };
+      })(),
+      arrTransport: (() => {
+        const raw = arrTransports[i] || '';
+        if (!raw.includes('~')) return { provider: raw, contact: '', location: '' };
+        const tp = raw.split('~');
+        return { provider: tp[0]||'', contact: tp[1]||'', location: tp[2]||'' };
+      })(),
     };
   });
 
@@ -212,6 +224,9 @@ async function loadAndRender() {
     if (legs[i].arrFbo && legs[i].arr) fboIcaos.add(legs[i].arr);
   }
   await Promise.all([...fboIcaos].map(ic => fetchFbos(ic)));
+
+  // Use pre-computed block times from planner (includes wind correction)
+  const storedBlocks = p.bt ? p.bt.split(',') : [];
 
   // Compute times
   const startVal = p.t || '';
@@ -229,27 +244,29 @@ async function loadAndRender() {
     const depApt = aptIdx[leg.dep], arrApt = aptIdx[leg.arr];
     const depTz = depApt?.tz, arrTz = arrApt?.tz;
 
-    let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
-    let flightMin = null;
-    if (distNm != null && profile.speed > 0) {
-      const cruiseGs = profile.speed;
-      if (profile.climbSpeed && profile.descentSpeed && profile.phaseMin) {
-        const climbGs = profile.climbSpeed;
-        const descentGs = profile.descentSpeed;
-        const climbDist = climbGs * (profile.phaseMin / 60);
-        const descentDist = descentGs * (profile.phaseMin / 60);
-        if (distNm <= climbDist + descentDist) {
-          const avgGs = (climbGs + descentGs) / 2;
-          flightMin = (distNm / avgGs) * 60;
+    let blockMin = (storedBlocks[i] != null && storedBlocks[i] !== '') ? +storedBlocks[i] : null;
+
+    // Fallback: calculate without wind if no stored block time
+    if (blockMin == null) {
+      let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
+      let flightMin = null;
+      if (distNm != null && profile.speed > 0) {
+        const cruiseGs = profile.speed;
+        if (profile.climbSpeed && profile.descentSpeed && profile.phaseMin) {
+          const climbDist = profile.climbSpeed * (profile.phaseMin / 60);
+          const descentDist = profile.descentSpeed * (profile.phaseMin / 60);
+          if (distNm <= climbDist + descentDist) {
+            flightMin = (distNm / ((profile.climbSpeed + profile.descentSpeed) / 2)) * 60;
+          } else {
+            const cruiseDist = distNm - climbDist - descentDist;
+            flightMin = profile.phaseMin + (cruiseDist / cruiseGs) * 60 + profile.phaseMin;
+          }
         } else {
-          const cruiseDist = distNm - climbDist - descentDist;
-          flightMin = profile.phaseMin + (cruiseDist / cruiseGs) * 60 + profile.phaseMin;
+          flightMin = (distNm / cruiseGs) * 60;
         }
-      } else {
-        flightMin = (distNm / cruiseGs) * 60;
       }
+      blockMin = (flightMin != null) ? profile.startup + flightMin + profile.shutdown : null;
     }
-    let blockMin = (flightMin != null) ? profile.startup + flightMin + profile.shutdown : null;
 
     let departTime = null, arriveTime = null;
     if (currentTime && blockMin != null) {
@@ -361,6 +378,24 @@ async function loadAndRender() {
       if (depFboInfo.phone) html += `<div class="fbo-detail"><a href="tel:${esc(depFboInfo.phone)}">${esc(depFboInfo.phone)}</a></div>`;
       html += `</div>`;
     }
+    html += `<div class="leg-services">`;
+    if (leg.food.desc) {
+      html += `<div>🍽 ${esc(leg.food.desc)}`;
+      if (leg.food.time) html += ` <span style="color:#999;font-size:0.75rem">(${esc(leg.food.time)})</span>`;
+      html += `</div>`;
+      if (leg.food.link) html += `<div style="font-size:0.75rem"><a href="${esc(leg.food.link)}" target="_blank" style="color:#2563eb">View Menu / Order</a></div>`;
+    } else {
+      html += `<div style="color:#999">🍽 No food arranged</div>`;
+    }
+    if (leg.depTransport.provider) {
+      html += `<div>🚗 ${esc(leg.depTransport.provider)}`;
+      if (leg.depTransport.contact) html += ` <span style="font-size:0.75rem"><a href="tel:${esc(leg.depTransport.contact)}" style="color:#2563eb">${esc(leg.depTransport.contact)}</a></span>`;
+      html += `</div>`;
+      if (leg.depTransport.location) html += `<div style="font-size:0.75rem;color:#666">Pickup: ${esc(leg.depTransport.location)}</div>`;
+    } else {
+      html += `<div style="color:#999">🚗 No ground transport</div>`;
+    }
+    html += `</div>`;
     html += `</div>`;
 
     // Block time column
@@ -385,13 +420,18 @@ async function loadAndRender() {
       if (arrFboInfo.phone) html += `<div class="fbo-detail"><a href="tel:${esc(arrFboInfo.phone)}">${esc(arrFboInfo.phone)}</a></div>`;
       html += `</div>`;
     }
+    html += `<div class="leg-services">`;
+    if (leg.arrTransport.provider) {
+      html += `<div>🚗 ${esc(leg.arrTransport.provider)}`;
+      if (leg.arrTransport.contact) html += ` <span style="font-size:0.75rem"><a href="tel:${esc(leg.arrTransport.contact)}" style="color:#2563eb">${esc(leg.arrTransport.contact)}</a></span>`;
+      html += `</div>`;
+      if (leg.arrTransport.location) html += `<div style="font-size:0.75rem;color:#666">Dropoff: ${esc(leg.arrTransport.location)}</div>`;
+    } else {
+      html += `<div style="color:#999">🚗 No ground transport</div>`;
+    }
+    html += `</div>`;
     html += `</div>`;
 
-    html += `</div>`;
-
-    html += `<div class="leg-extras" style="padding:0.5rem 1rem;border-top:1px solid #e0e0e0">`;
-    html += leg.food ? `<span>🍽 ${esc(leg.food)}</span>` : `<span style="color:#999">🍽 No food arranged</span>`;
-    html += leg.groundTransport ? `<span>🚗 ${esc(leg.groundTransport)}</span>` : `<span style="color:#999">🚗 No ground transport arranged</span>`;
     html += `</div>`;
 
     html += `</div>`;

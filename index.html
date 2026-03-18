@@ -155,6 +155,12 @@ button:hover { background: #2563eb; }
 /* Per-leg inline inputs */
 .leg-extra-input { background: #0f172a; border: 1px solid #334155; color: #94a3b8; padding: 0.15rem 0.3rem; border-radius: 3px; font-size: 0.68rem; width: 120px; margin-top: 2px; }
 .leg-extra-input:focus { outline: none; border-color: #3b82f6; color: #e2e8f0; }
+textarea.leg-extra-input { resize: vertical; font-family: inherit; display: block; min-height: 2.4em; }
+.dialog-input { background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 0.4rem 0.5rem; border-radius: 4px; font-size: 0.85rem; width: 100%; font-family: inherit; }
+.dialog-input:focus { outline: none; border-color: #3b82f6; }
+.food-transport-btn { background: none; border: 1px solid #334155; color: #94a3b8; padding: 0.15rem 0.3rem; border-radius: 3px; font-size: 0.68rem; cursor: pointer; text-align: left; width: 120px; margin-top: 2px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.food-transport-btn:hover { border-color: #3b82f6; color: #e2e8f0; }
+.food-transport-btn.has-data { color: #e2e8f0; }
 
 /* Version history */
 .history-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 400; }
@@ -251,7 +257,7 @@ button:hover { background: #2563eb; }
   .leg-row .td-pax { border-top: 1px solid #334155; margin-top: 0.3rem; padding-top: 0.4rem; }
   .leg-row .td-pax::before { content: 'Passengers'; display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.1rem; }
   .leg-row .td-food { border-top: 1px solid #334155; margin-top: 0.3rem; padding-top: 0.4rem; }
-  .leg-row .td-food::before { content: 'Food / Transport'; display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.1rem; }
+  .leg-row .td-food::before { content: 'Food / Ground Transport'; display: block; font-size: 0.65rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.1rem; }
   .leg-row .td-actions { position: absolute; top: 0.5rem; right: 0.5rem; }
 
   /* ── Ground/rest rows ── */
@@ -263,6 +269,7 @@ button:hover { background: #2563eb; }
   .icao-wrapper { display: block; }
   .fbo-select { max-width: 100%; font-size: 0.78rem; min-height: 36px; }
   .leg-extra-input { width: 100%; font-size: 14px; padding: 0.3rem; min-height: 36px; }
+  .food-transport-btn { width: 100%; font-size: 14px; min-height: 36px; padding: 0.3rem; }
   .pax-select { min-height: 36px; font-size: 14px !important; }
   .dep-override { font-size: 16px; min-height: 44px; width: 5rem; }
   .date-input { font-size: 16px; min-height: 44px; width: 100%; }
@@ -424,7 +431,7 @@ button:hover { background: #2563eb; }
           <th>Flight</th>
           <th>Block</th>
           <th>Pax</th>
-          <th>Food / Transport</th>
+          <th>Food / Ground Transport</th>
           <th>Depart</th>
           <th>Arrive</th>
           <th></th>
@@ -781,7 +788,7 @@ function autoPopulateTZ() {
 // ── Leg management ──
 function addLeg(dep, arr, ground, rest, nextDep) {
   const lastArr = legs.length > 0 ? legs[legs.length-1].arr : '';
-  legs.push({ dep: dep||lastArr, arr: arr||'', groundMin: ground ?? null, rest: rest||false, wind: null, nextDep: nextDep||'', depFbo: '', arrFbo: '', depFboCustom: {}, arrFboCustom: {}, pax: 0, paxNames: [], food: '', groundTransport: '' });
+  legs.push({ dep: dep||lastArr, arr: arr||'', groundMin: ground ?? null, rest: rest||false, wind: null, nextDep: nextDep||'', depFbo: '', arrFbo: '', depFboCustom: {}, arrFboCustom: {}, pax: 0, paxNames: [], food: {desc:'',link:'',time:''}, depTransport: {provider:'',contact:'',location:''}, arrTransport: {provider:'',contact:'',location:''} });
   recalc();
 }
 function removeLeg(i) { legs.splice(i, 1); recalc(); }
@@ -797,7 +804,7 @@ function loadRoute() {
   if (codes.length < 2) return;
   legs = [];
   for (let i = 0; i < codes.length - 1; i++) {
-    legs.push({ dep: codes[i], arr: codes[i+1], groundMin: null, rest: false, wind: null, nextDep: '', depFbo: '', arrFbo: '', depFboCustom: {}, arrFboCustom: {}, pax: 0, paxNames: [], food: '', groundTransport: '' });
+    legs.push({ dep: codes[i], arr: codes[i+1], groundMin: null, rest: false, wind: null, nextDep: '', depFbo: '', arrFbo: '', depFboCustom: {}, arrFboCustom: {}, pax: 0, paxNames: [], food: {desc:'',link:'',time:''}, depTransport: {provider:'',contact:'',location:''}, arrTransport: {provider:'',contact:'',location:''} });
   }
   input.value = '';
   recalc();
@@ -1129,7 +1136,7 @@ function recalc() {
       <td class="td-flight mono"><span class="mobile-label">Flight </span>${fmtDur(flightMin)}${windHtml}</td>
       <td class="td-block mono"><span class="mobile-label">Block </span>${fmtDur(blockMin)}</td>
       <td class="td-pax"><select class="pax-select" data-l="${i}" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.2rem;border-radius:3px;font-size:0.8rem">${Array.from({length:20},(_,n)=>`<option value="${n}"${n===leg.pax?' selected':''}>${n}</option>`).join('')}</select>${leg.pax > 0 ? '<div class="pax-names" style="margin-top:2px">' + Array.from({length:leg.pax},(_,n)=>`<input class="leg-extra-input pax-name-input" data-l="${i}" data-pn="${n}" value="${esc(leg.paxNames[n]||'')}" placeholder="Passenger ${n+1}" style="display:block;margin-top:1px">`).join('') + '</div>' : ''}</td>
-      <td class="td-food"><input class="leg-extra-input food-input" data-l="${i}" value="${esc(leg.food)}" placeholder="Food..."><br><input class="leg-extra-input transport-input" data-l="${i}" value="${esc(leg.groundTransport)}" placeholder="Transport..."></td>
+      <td class="td-food"><button class="food-transport-btn${foodSummary(leg.food) ? ' has-data' : ''}" onclick="openFoodDialog(${i})">🍽 ${esc(foodSummary(leg.food)) || 'Food...'}</button><button class="food-transport-btn${transportSummary(leg.depTransport) ? ' has-data' : ''}" onclick="openTransportDialog(${i},'depTransport')">🚗↑ ${esc(transportSummary(leg.depTransport)) || 'Dep transport...'}</button><button class="food-transport-btn${transportSummary(leg.arrTransport) ? ' has-data' : ''}" onclick="openTransportDialog(${i},'arrTransport')">🚗↓ ${esc(transportSummary(leg.arrTransport)) || 'Arr transport...'}</button></td>
       <td class="td-depart"><span class="mobile-label">Depart<br></span>${fmtTimeCell(departTime, depTz)}</td>
       <td class="td-arrive"><span class="mobile-label">Arrive<br></span>${fmtTimeCell(arriveTime, arrTz)}</td>
       <td class="td-actions">
@@ -1213,13 +1220,7 @@ function recalc() {
       });
     });
 
-    // Setup food/transport handlers
-    tr.querySelector('.food-input')?.addEventListener('change', function() {
-      legs[+this.dataset.l].food = this.value;
-    });
-    tr.querySelector('.transport-input')?.addEventListener('change', function() {
-      legs[+this.dataset.l].groundTransport = this.value;
-    });
+    // Food/transport handled by popup dialogs via onclick
 
     // Setup date/time handlers in dep cell
     const depDateInput = tr.querySelector('[data-dep-f="date"]');
@@ -1563,14 +1564,27 @@ function buildURL() {
     if (acf.some(f => f)) p.set('acf', acf.join('|'));
     const paxCounts = legs.map(l => l.pax || 0);
     if (paxCounts.some(n => n > 0)) p.set('px', paxCounts.join(','));
-    // Per-leg food & transport
-    const foods = legs.map(l => l.food || '');
-    const transports = legs.map(l => l.groundTransport || '');
-    if (foods.some(f => f)) p.set('fd', foods.join('|'));
-    if (transports.some(t => t)) p.set('gt', transports.join('|'));
+    // Per-leg food (desc~link~time, pipe between legs)
+    const foods = legs.map(l => {
+      if (!l.food || typeof l.food === 'string') return l.food || '';
+      return [l.food.desc||'', l.food.link||'', l.food.time||''].join('~');
+    });
+    if (foods.some(f => f && f !== '~~')) p.set('fd', foods.join('|'));
+    // Per-leg transport (provider~contact~location, pipe between legs)
+    const serializeTransport = t => {
+      if (!t || typeof t === 'string') return t || '';
+      return [t.provider||'', t.contact||'', t.location||''].join('~');
+    };
+    const depTransports = legs.map(l => serializeTransport(l.depTransport));
+    const arrTransports = legs.map(l => serializeTransport(l.arrTransport));
+    if (depTransports.some(t => t && t !== '~~')) p.set('gtd', depTransports.join('|'));
+    if (arrTransports.some(t => t && t !== '~~')) p.set('gta', arrTransports.join('|'));
     // Per-leg passenger names (semicolon within leg, pipe between legs)
     const paxNamesList = legs.map(l => (l.paxNames || []).join(';'));
     if (paxNamesList.some(n => n)) p.set('pn', paxNamesList.join('|'));
+    // Computed block times (so pax/planner views match exactly)
+    const blocks = lastLegCalc.map(c => c.blockMin != null ? Math.round(c.blockMin) : '');
+    if (blocks.some(b => b !== '')) p.set('bt', blocks.join(','));
   }
   return location.origin + location.pathname + '?' + p.toString();
 }
@@ -1584,38 +1598,54 @@ function getTripState() {
 }
 
 function doSave(name, id) {
+  // Flush any in-progress input so legs array is current
+  if (document.activeElement && document.activeElement.closest('.leg-row')) {
+    document.activeElement.blur();
+  }
   const body = { name, state: getTripState() };
   if (id) body.id = id;
-  fetch('trips.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-    .then(r => r.json())
+  return fetch('trips.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => {
+      if (!r.ok) throw new Error(r.status === 401 ? 'Session expired — please log in again' : 'Save failed');
+      return r.json();
+    })
     .then(d => {
+      if (d.error) throw new Error(d.error);
       currentTripId = d.id;
       lastSavedState = JSON.stringify(getTripState());
       showToast('Saved');
       loadHistoryInline();
+      return d;
     })
-    .catch(() => showToast('Save failed'));
+    .catch(err => {
+      showToast(err.message || 'Save failed');
+      if (err.message && err.message.includes('Session expired')) {
+        $('loginScreen').style.display = '';
+        $('homeScreen').style.display = 'none';
+      }
+      throw err;
+    });
 }
 
 function saveTrip() {
   if (tripLocked) {
     showToast('This trip is locked by another user');
-    return;
+    return Promise.reject();
   }
   if (!$('tripCargoToggle').value) {
     showToast('Please answer the cargo question before saving');
     $('tripCargoToggle').focus();
-    return;
+    return Promise.reject();
   }
   const currentRoute = legs.map(l => l.dep).concat(legs.length ? [legs[legs.length-1].arr] : []).filter(Boolean).join(' → ');
   const name = currentRoute || 'New Trip';
   if (currentTripId) {
-    doSave(name, currentTripId);
+    return doSave(name, currentTripId);
   } else {
     // Find existing trip with same route to avoid duplicates
-    fetch('trips.php').then(r => r.json()).then(trips => {
+    return fetch('trips.php').then(r => r.json()).then(trips => {
       const match = trips.find(t => t.route === currentRoute && currentRoute);
-      doSave(name, match ? match.id : null);
+      return doSave(name, match ? match.id : null);
     }).catch(() => doSave(name, null));
   }
 }
@@ -1656,6 +1686,7 @@ function loadTrip(id) {
       currentTripId = id;
       parseURL();
       recalc();
+      lastSavedState = JSON.stringify(getTripState());
       fetchWinds();
       loadHistoryInline();
       acquireLock(id);
@@ -1746,7 +1777,8 @@ function showToast(msg) {
 
 function sharePaxLink() {
   if (!currentTripId) {
-    showToast('Save the trip first');
+    showToast('Saving trip...');
+    saveTrip().then(() => sharePaxLink()).catch(() => {});
     return;
   }
   const url = location.origin + location.pathname.replace(/index\.html$/, '') + 'pax.html?id=' + encodeURIComponent(currentTripId);
@@ -1756,6 +1788,93 @@ function sharePaxLink() {
     fallbackCopy(url);
   }
   window.open(url, '_blank');
+}
+
+// ── Food & Transport popup editors ──
+function foodSummary(f) {
+  if (!f || typeof f === 'string') return f || '';
+  return [f.desc, f.time].filter(Boolean).join(' · ') || '';
+}
+function transportSummary(t) {
+  if (!t || typeof t === 'string') return t || '';
+  return [t.provider, t.location].filter(Boolean).join(' · ') || '';
+}
+function ensureFoodObj(leg) {
+  if (!leg.food || typeof leg.food === 'string') {
+    leg.food = { desc: leg.food || '', link: '', time: '' };
+  }
+}
+function ensureTransportObj(leg, field) {
+  if (!leg[field] || typeof leg[field] === 'string') {
+    leg[field] = { provider: leg[field] || '', contact: '', location: '' };
+  }
+}
+
+function openFoodDialog(legIdx) {
+  const leg = legs[legIdx];
+  ensureFoodObj(leg);
+  const f = leg.food;
+  const overlay = document.createElement('div');
+  overlay.className = 'ff-overlay';
+  overlay.innerHTML = `<div class="ff-dialog" style="width:400px">
+    <h3>Food / Catering — Leg ${legIdx + 1}</h3>
+    <div style="display:flex;flex-direction:column;gap:0.5rem">
+      <label style="display:block;color:#94a3b8;font-size:0.75rem">Description</label>
+      <textarea id="foodDesc" class="dialog-input" rows="3" placeholder="Catering details...">${esc(f.desc)}</textarea>
+      <label style="display:block;color:#94a3b8;font-size:0.75rem">Link</label>
+      <input id="foodLink" class="dialog-input" value="${esc(f.link)}" placeholder="https://...">
+      <label style="display:block;color:#94a3b8;font-size:0.75rem">Delivery Time</label>
+      <input id="foodTime" type="time" class="dialog-input" value="${esc(f.time)}">
+    </div>
+    <div class="ff-buttons"><button class="ff-cancel" id="foodCancel">Cancel</button><button class="ff-push" id="foodSave">Save</button></div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#foodCancel').onclick = () => overlay.remove();
+  overlay.querySelector('#foodSave').onclick = () => {
+    leg.food = {
+      desc: overlay.querySelector('#foodDesc').value.trim(),
+      link: overlay.querySelector('#foodLink').value.trim(),
+      time: overlay.querySelector('#foodTime').value.trim(),
+    };
+    overlay.remove();
+    recalc();
+  };
+}
+
+function openTransportDialog(legIdx, field) {
+  const leg = legs[legIdx];
+  ensureTransportObj(leg, field);
+  const t = leg[field];
+  const isDep = field === 'depTransport';
+  const locLabel = isDep ? 'Pickup Location' : 'Dropoff Location';
+  const title = isDep ? 'Departure Transport' : 'Arrival Transport';
+  const overlay = document.createElement('div');
+  overlay.className = 'ff-overlay';
+  overlay.innerHTML = `<div class="ff-dialog" style="width:400px">
+    <h3>${title} — Leg ${legIdx + 1}</h3>
+    <div style="display:flex;flex-direction:column;gap:0.5rem">
+      <label style="display:block;color:#94a3b8;font-size:0.75rem">Provider Name</label>
+      <input id="tProvider" class="dialog-input" value="${esc(t.provider)}" placeholder="e.g. UNUS Transportation">
+      <label style="display:block;color:#94a3b8;font-size:0.75rem">Provider Contact</label>
+      <input id="tContact" class="dialog-input" value="${esc(t.contact)}" placeholder="Phone or email">
+      <label style="display:block;color:#94a3b8;font-size:0.75rem">${locLabel}</label>
+      <textarea id="tLocation" class="dialog-input" rows="2" placeholder="Address or description...">${esc(t.location)}</textarea>
+    </div>
+    <div class="ff-buttons"><button class="ff-cancel" id="tCancel">Cancel</button><button class="ff-push" id="tSave">Save</button></div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#tCancel').onclick = () => overlay.remove();
+  overlay.querySelector('#tSave').onclick = () => {
+    leg[field] = {
+      provider: overlay.querySelector('#tProvider').value.trim(),
+      contact: overlay.querySelector('#tContact').value.trim(),
+      location: overlay.querySelector('#tLocation').value.trim(),
+    };
+    overlay.remove();
+    recalc();
+  };
 }
 
 function pushToForeFlight() {
@@ -1865,7 +1984,10 @@ function parseURL() {
     const afbos = p.has('af') ? p.get('af').split('|') : [];
     const pxCounts = p.has('px') ? p.get('px').split(',') : [];
     const foods = p.has('fd') ? p.get('fd').split('|') : [];
-    const transports = p.has('gt') ? p.get('gt').split('|') : [];
+    const depTransports = p.has('gtd') ? p.get('gtd').split('|') : [];
+    const arrTransports = p.has('gta') ? p.get('gta').split('|') : [];
+    // Backward compat: old single gt key maps to departure transport
+    const legacyTransports = p.has('gt') ? p.get('gt').split('|') : [];
     const paxNamesRaw = p.has('pn') ? p.get('pn').split('|') : [];
     const dcfRaw = p.has('dcf') ? p.get('dcf').split('|') : [];
     const acfRaw = p.has('acf') ? p.get('acf').split('|') : [];
@@ -1891,8 +2013,24 @@ function parseURL() {
         arrFboCustom: acfParts.length ? { name: acfParts[0]||'', address: acfParts[1]||'', phone: acfParts[2]||'' } : {},
         pax: count,
         paxNames: names,
-        food: foods[i] || '',
-        groundTransport: transports[i] || '',
+        food: (() => {
+          const raw = foods[i] || '';
+          if (!raw || !raw.includes('~')) return { desc: raw, link: '', time: '' };
+          const fp = raw.split('~');
+          return { desc: fp[0]||'', link: fp[1]||'', time: fp[2]||'' };
+        })(),
+        depTransport: (() => {
+          const raw = depTransports[i] || legacyTransports[i] || '';
+          if (!raw || !raw.includes('~')) return { provider: raw, contact: '', location: '' };
+          const tp = raw.split('~');
+          return { provider: tp[0]||'', contact: tp[1]||'', location: tp[2]||'' };
+        })(),
+        arrTransport: (() => {
+          const raw = arrTransports[i] || '';
+          if (!raw || !raw.includes('~')) return { provider: raw, contact: '', location: '' };
+          const tp = raw.split('~');
+          return { provider: tp[0]||'', contact: tp[1]||'', location: tp[2]||'' };
+        })(),
       };
     });
   }
@@ -1932,7 +2070,7 @@ function showGoHomeDialog() {
   document.body.appendChild(overlay);
   overlay.querySelector('#goHomeCancel').onclick = () => overlay.remove();
   overlay.querySelector('#goHomeDiscard').onclick = () => { overlay.remove(); showHome(); };
-  overlay.querySelector('#goHomeSave').onclick = () => { overlay.remove(); saveTrip(); setTimeout(showHome, 300); };
+  overlay.querySelector('#goHomeSave').onclick = () => { overlay.remove(); saveTrip().then(() => showHome()).catch(() => {}); };
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
@@ -2058,7 +2196,7 @@ function handleGoogleCredential(response) {
 
 // ── Planner share link ──
 function sharePlannerLink() {
-  if (!currentTripId) { showToast('Save the trip first'); return; }
+  if (!currentTripId) { showToast('Saving trip...'); saveTrip().then(() => sharePlannerLink()).catch(() => {}); return; }
   const url = location.origin + location.pathname.replace(/index\.html$/, '') + 'planner.html?id=' + encodeURIComponent(currentTripId);
   if (navigator.clipboard && location.protocol === 'https:') {
     navigator.clipboard.writeText(url).then(() => showToast('Planner link copied')).catch(() => fallbackCopy(url));
@@ -2082,7 +2220,7 @@ function summarizeChanges(oldState, newState) {
   if ((oldState.px || '') !== (newState.px || '')) changes.push('Passenger count changed');
   if ((oldState.pn || '') !== (newState.pn || '')) changes.push('Passenger names updated');
   if ((oldState.fd || '') !== (newState.fd || '')) changes.push('Food/catering updated');
-  if ((oldState.gt || '') !== (newState.gt || '')) changes.push('Ground transport updated');
+  if ((oldState.gtd || oldState.gt || '') !== (newState.gtd || '') || (oldState.gta || '') !== (newState.gta || '')) changes.push('Ground transport updated');
   if ((oldState.pu || '') !== (newState.pu || '')) changes.push('Purpose updated');
   if ((oldState.cg || '') !== (newState.cg || '')) changes.push('Cargo updated');
   if ((oldState.a || '') !== (newState.a || '')) changes.push('Aircraft changed');
@@ -2124,6 +2262,7 @@ function loadHistoryInline() {
       allVers.sort((a, b) => b.version - a.version);
 
       let html = '';
+      const VISIBLE = 5;
       for (let i = 0; i < allVers.length; i++) {
         const v = allVers[i];
         const prev = allVers[i + 1];
@@ -2132,12 +2271,16 @@ function loadHistoryInline() {
         if (prev && states[v.version] && states[prev.version]) {
           changeStr = summarizeChanges(states[prev.version], states[v.version]);
         }
-        html += `<div class="hist-item">`;
+        const hidden = i >= VISIBLE ? ' style="display:none" class="hist-item hist-hidden"' : ' class="hist-item"';
+        html += `<div${hidden}>`;
         html += `<div class="hi-left"><div><span class="hi-ver">v${v.version}${v.isCurrent ? ' (current)' : ''}</span><span class="hi-date">${esc(dateStr)}</span>${v.saved_by ? `<span class="hi-who">${esc(v.saved_by)}</span>` : ''}</div>`;
         if (changeStr) html += `<div class="hi-changes">${esc(changeStr)}</div>`;
         html += `</div>`;
         if (!v.isCurrent) html += `<button class="btn-sm btn-secondary" onclick="loadVersion(${v.version})">View</button>`;
         html += `</div>`;
+      }
+      if (allVers.length > VISIBLE) {
+        html += `<div class="hist-more" style="text-align:center;padding:0.4rem"><a href="#" onclick="this.parentElement.style.display='none';this.closest('#historyBody').querySelectorAll('.hist-hidden').forEach(el=>el.style.display='');return false" style="color:#3b82f6;font-size:0.8rem">Show ${allVers.length - VISIBLE} more...</a></div>`;
       }
       body.innerHTML = html;
     })
@@ -2170,8 +2313,7 @@ function restoreVersion() {
   viewingVersion = null;
   $('versionBanner').style.display = 'none';
   currentTripState = null;
-  saveTrip();
-  showToast('Version restored');
+  saveTrip().then(() => showToast('Version restored')).catch(() => {});
 }
 
 function cancelVersionView() {

@@ -25,7 +25,7 @@ Flight trip planner web app for N785QS (Gulfstream G550). PHP backend + vanilla 
 - `generate_airports.py` — builds `airports.json` from OurAirports CSV data. Filters to airports with paved runways >= 2000 ft, adds timezone via `timezonefinder`. Run with `pip install timezonefinder && python generate_airports.py`.
 - `scrape_fbos.py` — bulk scrapes FBO data from AirNav for all US (K-prefix) airports into `fbos.json`. Saves progress to `fbos_progress.json`. Throttled 1-2s between requests.
 
-**Key data flow**: `airports.json` is loaded client-side for ICAO autocomplete, distance calculation (haversine), and timezone lookups. Trip state is serialized as a compact query-string-style object (`l` for legs, `g` for ground times, `d` for departure overrides, `pu` for purpose, `cg` for cargo, `fd` for food, `gt` for ground transport, etc.) and stored in SQLite as a JSON blob. The `saved_trips/` directory is obsolete after running `migrate.php`.
+**Key data flow**: `airports.json` is loaded client-side for ICAO autocomplete, distance calculation (haversine), and timezone lookups. Trip state is serialized as a compact query-string-style object (`l` for legs, `g` for ground times, `d` for departure overrides, `pu` for purpose, `cg` for cargo, `fd` for food, `gtd`/`gta` for departure/arrival ground transport, etc.) and stored in SQLite as a JSON blob. The `saved_trips/` directory is obsolete after running `migrate.php`.
 
 ## State Keys
 
@@ -34,7 +34,8 @@ Flight trip planner web app for N785QS (Gulfstream G550). PHP backend + vanilla 
 | `pu` | trip | plain string | Trip purpose |
 | `cg` | trip | plain string | Cargo/luggage details |
 | `fd` | per-leg | pipe-separated | Food/catering per leg |
-| `gt` | per-leg | pipe-separated | Ground transportation per leg |
+| `gtd` | per-leg | pipe-separated | Ground transportation at departure per leg |
+| `gta` | per-leg | pipe-separated | Ground transportation at arrival per leg |
 
 ## Database
 
@@ -49,7 +50,7 @@ Defined in both `index.html` and `pax.html` as `PROFILES` object. Each profile h
 
 ## Deployment
 
-Hosted at `thesemite.com/flight-planer/`. Deploy by SSH (`ssh des@thesemite.com`) and updating files on the server. The server runs PHP natively.
+Hosted at `thesemite.com/trip-planner/`. Deploy by SSH (`ssh des@thesemite.com`) and uploading files to `/home/des/public_html/trip-planner/`. The server runs PHP natively.
 
 ## Local Development
 
