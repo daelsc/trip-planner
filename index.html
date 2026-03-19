@@ -1697,7 +1697,7 @@ function getFbSlotStatus(legIdx, side) {
 }
 
 function fboNotifyBadgeHtml(legIdx, side) {
-  if (!currentFbTripId) return '';
+  if (!currentFbTripId || !currentFbPushedSnapshot) return '';
   const status = getFbSlotStatus(legIdx, side);
   if (status === 'current') {
     return '<span class="fb-badge fb-up-to-date" title="FBO notified">&#x2713;</span>';
@@ -1716,6 +1716,15 @@ function updateFbStatus() {
     el.className = 'fb-status fb-not-notified';
     el.textContent = 'Not notified';
     if (btn) btn.textContent = 'Notify FBO';
+    return;
+  }
+  // If pushed before snapshot tracking existed, we can't compare — show unknown
+  if (!currentFbPushedSnapshot) {
+    el.className = 'fb-status fb-update-needed';
+    el.textContent = 'FBO status unknown';
+    el.title = 'Pushed before status tracking — push again to track';
+    el.onclick = () => { try { notifyFBO(); } catch(e) { alert('Error: '+e.message); } };
+    if (btn) btn.textContent = 'Update FBO';
     return;
   }
   // Check if any slot is stale
