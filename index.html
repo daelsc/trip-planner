@@ -386,6 +386,7 @@ textarea.leg-extra-input { resize: vertical; font-family: inherit; display: bloc
     <button class="btn-sm" onclick="sharePaxLink()">Share with Passengers</button>
     <button class="btn-sm" onclick="sharePlannerLink()">Share with Planner</button>
     <button class="btn-sm crew-only" onclick="try{pushToForeFlight();}catch(e){alert('Error: '+e.message);}">Push to ForeFlight</button>
+    <button class="btn-sm crew-only" onclick="try{pushToFlightBridge();}catch(e){alert('Error: '+e.message);}">Push to FlightBridge</button>
     <div class="trips-dropdown">
       <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
       <div class="trips-menu" id="tripsMenu"></div>
@@ -1136,7 +1137,7 @@ function recalc() {
       <td class="td-flight mono"><span class="mobile-label">Flight </span>${fmtDur(flightMin)}${windHtml}</td>
       <td class="td-block mono"><span class="mobile-label">Block </span>${fmtDur(blockMin)}</td>
       <td class="td-pax"><select class="pax-select" data-l="${i}" style="background:#0f172a;border:1px solid #334155;color:#e2e8f0;padding:0.2rem;border-radius:3px;font-size:0.8rem">${Array.from({length:20},(_,n)=>`<option value="${n}"${n===leg.pax?' selected':''}>${n}</option>`).join('')}</select>${leg.pax > 0 ? '<div class="pax-names" style="margin-top:2px">' + Array.from({length:leg.pax},(_,n)=>`<input class="leg-extra-input pax-name-input" data-l="${i}" data-pn="${n}" value="${esc(leg.paxNames[n]||'')}" placeholder="Passenger ${n+1}" style="display:block;margin-top:1px">`).join('') + '</div>' : ''}</td>
-      <td class="td-food"><button class="food-transport-btn${foodSummary(leg.food) ? ' has-data' : ''}" onclick="openFoodDialog(${i})">🍽 ${esc(foodSummary(leg.food)) || 'Food...'}</button><button class="food-transport-btn${transportSummary(leg.depTransport) ? ' has-data' : ''}" onclick="openTransportDialog(${i},'depTransport')">🚗↑ ${esc(transportSummary(leg.depTransport)) || 'Dep transport...'}</button><button class="food-transport-btn${transportSummary(leg.arrTransport) ? ' has-data' : ''}" onclick="openTransportDialog(${i},'arrTransport')">🚗↓ ${esc(transportSummary(leg.arrTransport)) || 'Arr transport...'}</button></td>
+      <td class="td-food"><button class="food-transport-btn${foodSummary(leg.food) ? ' has-data' : ''}" onclick="openFoodDialog(${i})">🍽 ${esc(foodSummary(leg.food)) || 'Food...'}</button><button class="food-transport-btn${transportSummary(leg.depTransport) ? ' has-data' : ''}" onclick="openTransportDialog(${i},'depTransport')">🚗↑ ${esc(transportSummary(leg.depTransport)) || 'Dep transport...'}</button><div style="display:flex;gap:2px;align-items:center"><button class="food-transport-btn${transportSummary(leg.arrTransport) ? ' has-data' : ''}" onclick="openTransportDialog(${i},'arrTransport')" style="flex:1">🚗↓ ${esc(transportSummary(leg.arrTransport)) || 'Arr transport...'}</button>${fbServices && fbServices[i] ? `<button class="btn-icon" onclick="showFbProviders(${i})" title="FlightBridge ground transport" style="font-size:0.65rem;color:#60a5fa;padding:1px 3px">FB</button>` : ''}</div></td>
       <td class="td-depart"><span class="mobile-label">Depart<br></span>${fmtTimeCell(departTime, depTz)}</td>
       <td class="td-arrive"><span class="mobile-label">Arrive<br></span>${fmtTimeCell(arriveTime, arrTz)}</td>
       <td class="td-actions">
@@ -1935,6 +1936,114 @@ function pushToForeFlight() {
       })
       .catch(() => showToast('ForeFlight push failed'));
   });
+}
+
+function pushToFlightBridge() {
+  if (!legs.length) { alert('Add legs before pushing to FlightBridge.'); return; }
+  if (!lastLegCalc.length) { alert('No calculated leg data. Make sure a start time is set.'); return; }
+  const validLegs = [];
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i], lc = lastLegCalc[i];
+    if (!leg.dep || !leg.arr || !lc?.departTime) continue;
+    validLegs.push({ idx: i, leg, lc });
+  }
+  if (!validLegs.length) { alert('No valid legs to push. Make sure airports and a start time are set.'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'ff-overlay';
+  let checkboxes = '';
+  for (const v of validLegs) {
+    const depTz = aptIdx[v.leg.dep]?.tz || 'UTC';
+    const depLocal = v.lc.departTime.toLocaleString('en-US', { timeZone: depTz, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const fboInfo = v.leg.arrFbo ? ` <span style="color:#64748b;font-size:0.72rem">FBO: ${v.leg.arrFbo}</span>` : '';
+    checkboxes += `<label><input type="checkbox" checked value="${v.idx}"> ${v.leg.dep} → ${v.leg.arr} &nbsp;<span style="color:#64748b;font-size:0.78rem">${depLocal}</span>${fboInfo}</label>`;
+  }
+  overlay.innerHTML = `<div class="ff-dialog"><h3>Push to FlightBridge</h3><p style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.75rem">Creates a trip in FlightBridge with FBO notifications, hotel, and ground transport.</p>${checkboxes}<div class="ff-buttons"><button class="ff-cancel" onclick="this.closest('.ff-overlay').remove()">Cancel</button><button class="ff-push" id="fbPushBtn">Push Selected</button></div></div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('fbPushBtn').addEventListener('click', () => {
+    const checked = overlay.querySelectorAll('input[type=checkbox]:checked');
+    if (!checked.length) { showToast('No legs selected'); return; }
+    const fbLegs = [];
+    checked.forEach(cb => {
+      const i = parseInt(cb.value);
+      const leg = legs[i], lc = lastLegCalc[i];
+      const depTz = aptIdx[leg.dep]?.tz || 'UTC';
+      const arrTz = aptIdx[leg.arr]?.tz || 'UTC';
+      function fmtLocalDt(dt, tz) {
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(dt);
+        const p = {}; parts.forEach(x => p[x.type] = x.value);
+        return { date: `${+p.month}/${+p.day}/${p.year}`, time: `${p.hour}:${p.minute}` };
+      }
+      const depLocal = fmtLocalDt(lc.departTime, depTz);
+      const arrLocal = lc.arriveTime ? fmtLocalDt(lc.arriveTime, arrTz) : null;
+      fbLegs.push({
+        departure: leg.dep, arrival: leg.arr,
+        departureDate: depLocal.date, departureTime: depLocal.time,
+        arrivalDate: arrLocal ? arrLocal.date : '', arrivalTime: arrLocal ? arrLocal.time : '',
+        departureFbo: leg.depFbo || '', arrivalFbo: leg.arrFbo || '',
+        pax: leg.pax || 0,
+      });
+    });
+    overlay.remove();
+    showToast('Saving trip...');
+    const currentRoute = legs.map(l => l.dep).concat(legs.length ? [legs[legs.length-1].arr] : []).filter(Boolean).join(' → ');
+    doSave(currentRoute || 'New Trip', currentTripId || null).then(saved => {
+      if (!saved || !currentTripId) { showToast('Save failed — cannot push to FlightBridge'); return; }
+      showToast('Pushing to FlightBridge...');
+      fetch('flightbridge.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ legs: fbLegs, tripNumber: currentTripId || '', localTripId: currentTripId || '' }) })
+      .then(r => r.json().then(d => ({ status: r.status, data: d })))
+      .then(({ status, data }) => {
+        if (status === 200 && data.success) {
+          const cnt = (data.results || []).filter(r => r.status === 'saved').length;
+          const action = data.updated ? 'updated' : 'pushed';
+          showToast(`FlightBridge: ${cnt} leg${cnt !== 1 ? 's' : ''} ${action}` + (data.tripId ? ` (Trip #${data.tripId})` : ''));
+          if (currentTripId) fetchFlightBridgeServices();
+        } else {
+          showToast('FlightBridge error: ' + (data.error || `status=${status}`));
+        }
+      })
+      .catch(() => showToast('FlightBridge push failed'));
+    });
+  });
+}
+
+let fbServices = null;
+function fetchFlightBridgeServices() {
+  if (!currentTripId) return;
+  fetch('flightbridge_services.php?tripId=' + encodeURIComponent(currentTripId))
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success || !data.groundServices) return;
+      fbServices = data.groundServices;
+      recalc();
+    })
+    .catch(() => {});
+}
+
+function showFbProviders(legIdx) {
+  if (!fbServices || !fbServices[legIdx]) return;
+  const svc = fbServices[legIdx];
+  if (!svc.providers || !svc.providers.length) { showToast('No ground transport providers found'); return; }
+  const overlay = document.createElement('div');
+  overlay.className = 'ff-overlay';
+  let rows = '';
+  for (const p of svc.providers) {
+    const phone = p.phone ? `<a href="tel:${p.phone.replace(/[^\d+]/g,'')}" style="color:#60a5fa">${p.phone}</a>` : '';
+    const badge = p.registered ? '<span style="color:#22c55e;font-size:0.7rem">&#10003;</span> ' : '';
+    rows += `<div style="padding:0.4rem 0;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;gap:0.5rem;cursor:pointer" class="fb-provider-row" data-name="${p.name.replace(/"/g,'&quot;')}">
+      <div><div style="font-size:0.85rem;color:#e2e8f0">${badge}${p.name}</div>${phone ? `<div style="font-size:0.75rem">${phone}</div>` : ''}</div>
+      <button class="btn-sm" style="font-size:0.7rem;padding:0.2rem 0.5rem;white-space:nowrap" onclick="event.stopPropagation();selectFbProvider(${legIdx},'${p.name.replace(/'/g,"\\'")}','${(p.phone||'').replace(/'/g,"\\'")}');this.closest('.ff-overlay').remove()">Select</button>
+    </div>`;
+  }
+  overlay.innerHTML = `<div class="ff-dialog" style="width:400px;max-height:80vh;overflow-y:auto"><h3>Ground Transport — Leg ${legIdx+1}</h3><p style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.5rem">${svc.providers.length} providers from FlightBridge</p>${rows}<div class="ff-buttons" style="margin-top:0.75rem"><button class="ff-cancel" onclick="this.closest('.ff-overlay').remove()">Close</button></div></div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+function selectFbProvider(legIdx, name, phone) {
+  legs[legIdx].arrTransport = { provider: name, contact: phone || '', location: '' };
+  recalc();
+  showToast('Selected: ' + name);
 }
 
 function parseURL() {
