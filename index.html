@@ -191,7 +191,12 @@ textarea.leg-extra-input { resize: vertical; font-family: inherit; display: bloc
 .fb-not-notified { color: #94a3b8; }
 .fb-up-to-date { color: #22c55e; }
 .fb-update-needed { color: #f59e0b; cursor: pointer; }
-.fb-badge { font-size: 0.65rem; font-weight: 700; margin-left: 0.25rem; vertical-align: middle; }
+.fb-notify-btn { font-size: 0.6rem; font-weight: 600; padding: 0.1rem 0.3rem; border-radius: 3px; cursor: pointer; border: 1px solid; vertical-align: middle; line-height: 1.2; }
+.fb-btn-new { background: #1e293b; color: #94a3b8; border-color: #475569; }
+.fb-btn-new:hover { color: #e2e8f0; border-color: #3b82f6; }
+.fb-btn-stale { background: rgba(245,158,11,0.15); color: #f59e0b; border-color: #f59e0b; }
+.fb-btn-stale:hover { background: rgba(245,158,11,0.25); }
+.fb-btn-current { background: rgba(34,197,94,0.1); color: #22c55e; border-color: transparent; cursor: default; font-size: 0.7rem; }
 .fbo-notify-row { display: flex; align-items: center; gap: 0.2rem; margin-top: 1px; }
 
 /* Loading spinner */
@@ -394,7 +399,7 @@ textarea.leg-extra-input { resize: vertical; font-family: inherit; display: bloc
     <button class="btn-sm" onclick="sharePaxLink()">Share with Passengers</button>
     <button class="btn-sm" onclick="sharePlannerLink()">Share with Planner</button>
     <button class="btn-sm crew-only" onclick="try{pushToForeFlight();}catch(e){alert('Error: '+e.message);}">Push to ForeFlight</button>
-    <span class="crew-only" style="display:inline-flex;align-items:center;gap:0.3rem"><button class="btn-sm" id="fbNotifyBtn" onclick="try{notifyFBO();}catch(e){alert('Error: '+e.message);}">Notify FBO</button><span id="fbStatus" class="fb-status"></span></span>
+    <button class="btn-sm crew-only" id="fbNotifyBtn" onclick="try{notifyFBO();}catch(e){alert('Error: '+e.message);}">Notify FBOs</button><span id="fbStatus" class="fb-status crew-only"></span>
     <div class="trips-dropdown">
       <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
       <div class="trips-menu" id="tripsMenu"></div>
@@ -628,7 +633,7 @@ function fboSelectHtml(icao, legIdx, field, selected) {
   }
   const isOther = selected === '__other__';
   const side = field === 'depFbo' ? 'dep' : 'arr';
-  const badge = fboNotifyBadgeHtml(legIdx, side);
+  const badge = fboNotifyBtnHtml(legIdx, side);
   // Apply default if nothing selected yet and FBOs exist
   const effective = selected || (c.fbos.length ? (DEFAULT_FBOS[icao] || '') : '');
   // Always show select even if no FBOs (user can pick Other)
@@ -1026,7 +1031,7 @@ function recalc() {
     if (depCity) depCellHtml += `<div class="icao-city">${esc(depCity)}</div>`;
     depCellHtml += depRwy;
     if (i === 0 && leg.dep) depCellHtml += fboSelectHtml(leg.dep, i, 'depFbo', leg.depFbo);
-    if (i > 0 && leg.dep) depCellHtml += fboNotifyBadgeHtml(i, 'dep');
+    if (i > 0 && leg.dep) depCellHtml += fboNotifyBtnHtml(i, 'dep');
     // Date/time inputs
     depCellHtml += `<div class="dep-dt" style="margin-top:2px">`;
     depCellHtml += `<input class="date-input" type="date" value="${esc(curDepDate)}" data-dep-l="${curDepIndex}" data-dep-f="date">`;
@@ -1696,15 +1701,20 @@ function getFbSlotStatus(legIdx, side) {
   }
 }
 
-function fboNotifyBadgeHtml(legIdx, side) {
-  if (!currentFbTripId || !currentFbPushedSnapshot) return '';
+function fboNotifyBtnHtml(legIdx, side) {
+  const fboName = side === 'dep'
+    ? (legIdx === 0 ? legs[legIdx]?.depFbo : legs[legIdx-1]?.arrFbo) || ''
+    : legs[legIdx]?.arrFbo || '';
+  // No button if no FBO selected
+  if (!fboName) return '';
   const status = getFbSlotStatus(legIdx, side);
   if (status === 'current') {
-    return '<span class="fb-badge fb-up-to-date" title="FBO notified">&#x2713;</span>';
+    return '<button class="fb-notify-btn fb-btn-current" title="FBO notified" disabled>&#x2713;</button>';
   } else if (status === 'stale') {
-    return `<span class="fb-badge fb-update-needed" title="FBO notification outdated — click Notify FBO to update">!</span>`;
+    return `<button class="fb-notify-btn fb-btn-stale" title="FBO notification outdated" onclick="notifyFBO()">Update</button>`;
   }
-  return '';
+  // 'none' — never pushed or no snapshot
+  return `<button class="fb-notify-btn fb-btn-new" title="Notify this FBO via FlightBridge" onclick="notifyFBO()">Notify</button>`;
 }
 
 function updateFbStatus() {
@@ -1713,38 +1723,29 @@ function updateFbStatus() {
   if (!el) return;
   if (!currentTripId) { el.textContent = ''; return; }
   if (!currentFbTripId) {
-    el.className = 'fb-status fb-not-notified';
-    el.textContent = 'Not notified';
-    if (btn) btn.textContent = 'Notify FBO';
+    el.textContent = '';
+    if (btn) btn.textContent = 'Notify FBOs';
     return;
   }
-  // If pushed before snapshot tracking existed, we can't compare — show unknown
   if (!currentFbPushedSnapshot) {
-    el.className = 'fb-status fb-update-needed';
-    el.textContent = 'FBO status unknown';
-    el.title = 'Pushed before status tracking — push again to track';
-    el.onclick = () => { try { notifyFBO(); } catch(e) { alert('Error: '+e.message); } };
-    if (btn) btn.textContent = 'Update FBO';
+    el.textContent = '';
+    if (btn) btn.textContent = 'Update FBOs';
     return;
   }
-  // Check if any slot is stale
-  let anyStale = false;
+  // Count stale slots
+  let staleCount = 0;
   for (let i = 0; i < legs.length; i++) {
-    if (getFbSlotStatus(i, 'dep') === 'stale' || getFbSlotStatus(i, 'arr') === 'stale') {
-      anyStale = true;
-      break;
-    }
+    if (getFbSlotStatus(i, 'dep') === 'stale') staleCount++;
+    if (getFbSlotStatus(i, 'arr') === 'stale') staleCount++;
   }
-  if (!anyStale) {
+  if (staleCount === 0) {
     el.className = 'fb-status fb-up-to-date';
-    el.textContent = 'FBOs notified \u2713';
-    if (btn) btn.textContent = 'Notify FBO';
+    el.textContent = '\u2713';
+    if (btn) btn.textContent = 'Notify FBOs';
   } else {
     el.className = 'fb-status fb-update-needed';
-    el.textContent = 'FBO update needed';
-    el.title = 'Schedule has changed since last FBO notification';
-    el.onclick = () => { try { notifyFBO(); } catch(e) { alert('Error: '+e.message); } };
-    if (btn) btn.textContent = 'Update FBO';
+    el.textContent = `${staleCount} update${staleCount > 1 ? 's' : ''} needed`;
+    if (btn) btn.textContent = 'Update FBOs';
   }
 }
 
