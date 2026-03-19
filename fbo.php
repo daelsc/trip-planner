@@ -224,14 +224,16 @@ function fetchFlightBridgeFbos($icao) {
         return $resp;
     };
 
-    // Login
-    $loginPage = $doReq('GET', "$base/Account/LogIn");
-    if (!$loginPage) return [];
-    preg_match('/name="__RequestVerificationToken"[^>]*value="([^"]+)"/', $loginPage, $cm);
-    if (empty($cm[1])) return [];
-    $doReq('POST', "$base/Account/LogOn", http_build_query([
-        '__RequestVerificationToken' => $cm[1],
-        'UserName' => $user, 'Password' => $pass, 'RememberMe' => 'true',
+    // Login (two-step flow)
+    $doReq('GET', "$base/Account/LogIn");
+    $r = $doReq('POST', "$base/Account/LogIn", http_build_query([
+        'UserName' => $user, 'ReturnUrl' => '',
+    ]));
+    // Follow redirect to password page
+    $doReq('GET', "$base/Account/LogInPassword");
+    $doReq('POST', "$base/Account/LogInPassword", http_build_query([
+        'UserName' => $user, 'ReturnUrl' => '',
+        'Password' => $pass, 'RememberMe' => 'true',
     ]));
     if (empty($cookies['.ASPXAUTH'])) return [];
 

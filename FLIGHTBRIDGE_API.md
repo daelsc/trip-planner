@@ -10,22 +10,28 @@ FlightBridge is an ASP.NET MVC web application. There is no documented public RE
 
 ## Authentication
 
-FlightBridge uses ASP.NET Forms Authentication with CSRF protection.
+FlightBridge uses ASP.NET Forms Authentication with a two-step login flow (email, then password).
 
 ### Login Flow
 
-1. **GET `/Account/LogIn`** — Load the login page. Extract:
-   - `ASP.NET_SessionId` cookie (set automatically)
-   - `__RequestVerificationToken` cookie
-   - `__RequestVerificationToken` hidden form field (different from cookie — this is the CSRF token)
+1. **GET `/Account/LogIn`** — Load the login page. Sets `ASP.NET_SessionId` cookie.
 
-2. **POST `/Account/LogOn`** — Submit credentials.
+2. **POST `/Account/LogIn`** — Submit email address.
    - Content-Type: `application/x-www-form-urlencoded`
    - Body fields:
      | Field | Description |
      |-------|-------------|
-     | `__RequestVerificationToken` | CSRF token from hidden form field |
-     | `UserName` | FlightBridge username |
+     | `UserName` | FlightBridge email address |
+     | `ReturnUrl` | Empty string |
+   - Response: 302 redirect to `/Account/LogInPassword`
+
+3. **GET `/Account/LogInPassword`** — Load the password page (maintains session state, shows email confirmation).
+
+4. **POST `/Account/LogInPassword`** — Submit password.
+   - Content-Type: `application/x-www-form-urlencoded`
+   - Body fields:
+     | Field | Description |
+     |-------|-------------|
      | `Password` | FlightBridge password |
      | `RememberMe` | `true` or `false` |
    - Response: 302 redirect to `/`
@@ -35,7 +41,6 @@ FlightBridge uses ASP.NET Forms Authentication with CSRF protection.
 
 All subsequent requests must include:
 - `ASP.NET_SessionId`
-- `__RequestVerificationToken`
 - `.ASPXAUTH`
 
 ## Endpoints

@@ -83,24 +83,24 @@ function fbRequest($method, $url, $body = null) {
     return ['status' => $status, 'body' => $resp, 'location' => $location];
 }
 
-// --- Login ---
-$r = fbRequest('GET', "$FB_BASE/Account/LogIn");
-preg_match('/name="__RequestVerificationToken"[^>]*value="([^"]+)"/', $r['body'], $cm);
-$csrf = $cm[1] ?? '';
-if (!$csrf) {
+// --- Login (two-step flow) ---
+fbRequest('GET', "$FB_BASE/Account/LogIn");
+$r = fbRequest('POST', "$FB_BASE/Account/LogIn", http_build_query([
+    'UserName' => $FB_USER, 'ReturnUrl' => '',
+]));
+if ($r['status'] !== 302 || $r['location'] !== '/Account/LogInPassword') {
     http_response_code(502);
-    echo json_encode(['error' => 'Failed to get FlightBridge login page']);
+    echo json_encode(['error' => 'FlightBridge email step failed']);
     exit;
 }
-$r = fbRequest('POST', "$FB_BASE/Account/LogOn", http_build_query([
-    '__RequestVerificationToken' => $csrf,
-    'UserName' => $FB_USER,
-    'Password' => $FB_PASS,
-    'RememberMe' => 'true',
+fbRequest('GET', "$FB_BASE/Account/LogInPassword");
+fbRequest('POST', "$FB_BASE/Account/LogInPassword", http_build_query([
+    'UserName' => $FB_USER, 'ReturnUrl' => '',
+    'Password' => $FB_PASS, 'RememberMe' => 'true',
 ]));
 if (empty($cookieJar['.ASPXAUTH'])) {
     http_response_code(502);
-    echo json_encode(['error' => 'FlightBridge login failed']);
+    echo json_encode(['error' => 'FlightBridge login failed — check credentials']);
     exit;
 }
 

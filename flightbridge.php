@@ -88,8 +88,8 @@ function fbRequest($method, $url, $body = null, $contentType = 'application/x-ww
     return ['status' => $statusCode, 'body' => $resp, 'location' => $location];
 }
 
-// --- Step 1: Login to FlightBridge ---
-// Get login page for CSRF token
+// --- Step 1: Login to FlightBridge (two-step flow) ---
+// Get login page (establishes session cookie)
 $loginPage = fbRequest('GET', "$FB_BASE/Account/LogIn");
 if ($loginPage['status'] !== 200) {
     http_response_code(502);
@@ -97,26 +97,30 @@ if ($loginPage['status'] !== 200) {
     exit;
 }
 
-// Extract __RequestVerificationToken from HTML form
-preg_match('/name="__RequestVerificationToken"[^>]*value="([^"]+)"/', $loginPage['body'], $csrfMatch);
-$csrfToken = $csrfMatch[1] ?? '';
-if (!$csrfToken) {
+// Submit email
+$emailResp = fbRequest('POST', "$FB_BASE/Account/LogIn", http_build_query([
+    'UserName' => $FB_USER,
+    'ReturnUrl' => '',
+]));
+if ($emailResp['status'] !== 302 || $emailResp['location'] !== '/Account/LogInPassword') {
     http_response_code(502);
-    echo json_encode(['error' => 'Could not extract CSRF token from FlightBridge login page']);
+    echo json_encode(['error' => 'FlightBridge email step failed', 'status' => $emailResp['status'], 'location' => $emailResp['location']]);
     exit;
 }
 
-// Submit login
-$loginBody = http_build_query([
-    '__RequestVerificationToken' => $csrfToken,
+// Load password page (required to maintain session state)
+fbRequest('GET', "$FB_BASE/Account/LogInPassword");
+
+// Submit password (must include hidden UserName and ReturnUrl fields)
+$loginResp = fbRequest('POST', "$FB_BASE/Account/LogInPassword", http_build_query([
     'UserName' => $FB_USER,
+    'ReturnUrl' => '',
     'Password' => $FB_PASS,
     'RememberMe' => 'true',
-]);
-$loginResp = fbRequest('POST', "$FB_BASE/Account/LogOn", $loginBody);
-if ($loginResp['status'] !== 302 || empty($cookieJar['.ASPXAUTH'])) {
+]));
+if (empty($cookieJar['.ASPXAUTH'])) {
     http_response_code(502);
-    echo json_encode(['error' => 'FlightBridge login failed', 'status' => $loginResp['status']]);
+    echo json_encode(['error' => 'FlightBridge login failed — check credentials', 'status' => $loginResp['status']]);
     exit;
 }
 
