@@ -1553,11 +1553,6 @@ function saveTrip() {
     showToast('This trip is locked by another user');
     return Promise.reject();
   }
-  if (!$('tripCargoToggle').value) {
-    showToast('Please answer the cargo question before saving');
-    $('tripCargoToggle').focus();
-    return Promise.reject();
-  }
   const currentRoute = legs.map(l => l.dep).concat(legs.length ? [legs[legs.length-1].arr] : []).filter(Boolean).join(' → ');
   const name = currentRoute || 'New Trip';
   if (currentTripId) {
@@ -1717,35 +1712,8 @@ function fboNotifyBtnHtml(legIdx, side) {
 }
 
 function updateFbStatus() {
-  const el = $('fbStatus');
-  const btn = $('fbNotifyBtn');
-  if (!el) return;
-  if (!currentTripId) { el.textContent = ''; return; }
-  if (!currentFbTripId) {
-    el.textContent = '';
-    if (btn) btn.textContent = 'Notify FBOs';
-    return;
-  }
-  if (!currentFbPushedSnapshot) {
-    el.textContent = '';
-    if (btn) btn.textContent = 'Update FBOs';
-    return;
-  }
-  // Count stale slots
-  let staleCount = 0;
-  for (let i = 0; i < legs.length; i++) {
-    if (getFbSlotStatus(i, 'dep') === 'stale') staleCount++;
-    if (getFbSlotStatus(i, 'arr') === 'stale') staleCount++;
-  }
-  if (staleCount === 0) {
-    el.className = 'fb-status fb-up-to-date';
-    el.textContent = '\u2713';
-    if (btn) btn.textContent = 'Notify FBOs';
-  } else {
-    el.className = 'fb-status fb-update-needed';
-    el.textContent = `${staleCount} update${staleCount > 1 ? 's' : ''} needed`;
-    if (btn) btn.textContent = 'Update FBOs';
-  }
+  // Per-leg buttons are rendered inline by fboNotifyBtnHtml during recalc.
+  // This function is kept as a no-op hook for future use.
 }
 
 function acquireLock(tripId) {
