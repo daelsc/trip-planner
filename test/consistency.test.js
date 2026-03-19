@@ -133,3 +133,42 @@ describe('cross-view consistency', () => {
     assert.ok(results[0].blockMin > 40 && results[0].blockMin < 70);
   });
 });
+
+describe('index.html DOM safety', () => {
+  // Regression: updateFbStatus() referenced removed DOM elements (#fbStatus, #fbNotifyBtn)
+  // which threw a null reference error, breaking recalc() and preventing FBO loading.
+  // This test scans index.html for $('id').property patterns without null guards.
+
+  const indexSrc = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+
+  it('no unguarded $() calls that assume element exists', () => {
+    // Match patterns like: $('someId').textContent or $('someId').className
+    // These crash if the element doesn't exist. Safe patterns use ?. or check first.
+    const lines = indexSrc.split('\n');
+    const issues = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // Match $('...').prop but not $('...')?.prop and not if/? guard on same line
+      const m = line.match(/\$\(['"](\w+)['"]\)\./g);
+      if (!m) continue;
+      for (const call of m) {
+        // Skip if it uses optional chaining
+        if (line.includes(call.replace(').', ')?.')) continue;
+        // Skip if the result is checked for null (e.g. "if (!$('x')) return")
+        // Skip the $ = getElementById definition itself
+        if (line.includes('function $(id)')) continue;
+        // Skip if guarded by if/? on same line or preceding line
+        const id = call.match(/\$\(['"](\w+)['"]\)/)[1];
+        // Check if this element exists in the HTML
+        const elExists = indexSrc.includes(`id="${id}"`) || indexSrc.includes(`id='${id}'`);
+        if (!elExists) {
+          issues.push({ line: i + 1, id, code: line.trim().substring(0, 80) });
+        }
+      }
+    }
+    if (issues.length > 0) {
+      const msg = issues.map(i => `  line ${i.line}: $('${i.id}') — element not in HTML\n    ${i.code}`).join('\n');
+      assert.fail(`Found $() calls referencing missing DOM elements:\n${msg}`);
+    }
+  });
+});
