@@ -53,8 +53,20 @@ Defined in both `index.html` and `pax.html` as `PROFILES` object. Each profile h
 
 ## Deployment
 
-Hosted at `thesemite.com/trip-planner/`. Deploy by SSH (`ssh des@thesemite.com`) and uploading files to `/home/des/public_html/trip-planner/`. The server runs PHP natively.
+Hosted at `thesemite.com/trip-planner/`. Deploy by SSH (`ssh des@thesemite.com`) and uploading files to `/home/des/public_html/trip-planner/`. The server runs PHP natively. Apache runs as `www-data`.
+
+**Deploy command:**
+```bash
+rsync -avz --exclude='.git' --exclude='flights.db' --exclude='flights.db-wal' --exclude='flights.db-shm' --exclude='.env' --exclude='fbo_cache' --exclude='saved_trips' --exclude='fbos.json' --exclude='fbos_progress.json' --exclude='scrape_fbos.py' --exclude='node_modules' ./ des@thesemite.com:/home/des/public_html/trip-planner/
+```
+
+**Important:** The deploy directory must be writable by `www-data` (chmod 777) so SQLite can create WAL/SHM files. Verify after deploy: `chmod 777 /home/des/public_html/trip-planner/`
 
 ## Local Development
 
-No test suite or linting configured. Run locally with `php -S localhost:8000`.
+Test suite uses `node:test` for JS and plain PHP assertions. Run locally with `php -S localhost:8000`.
+
+```bash
+node --test test/flight-math.test.js test/consistency.test.js
+php test/trips.test.php && php test/fbo.test.php
+```
