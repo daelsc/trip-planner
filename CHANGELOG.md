@@ -1,4 +1,4 @@
-# Flight Planner — Changelog & Architecture Notes
+# Trip Planner — Changelog & Architecture Notes
 
 ## Architecture
 
@@ -26,6 +26,42 @@
 
 ## Changelog
 
+### 2026-03-18 — Ground Transport, Food Dialogs, Save Fixes
+
+#### Ground Transport per Departure/Arrival
+- Split single ground transport field into **departure transport** and **arrival transport** per leg
+- Each has structured fields: provider name, provider contact (phone/email), pickup location (departure) or dropoff location (arrival)
+- State keys changed from `gt` (single) to `gtd` (departure) and `gta` (arrival), tilde-separated fields within each leg (`provider~contact~location`), pipe-separated between legs
+- Backward compatible: old `gt` key loads into departure transport provider field
+
+#### Food/Catering Dialog
+- Food expanded from plain text to structured fields: description, link (URL), delivery time (time picker)
+- State key `fd` now uses tilde-separated format (`desc~link~time`), backward compatible with old plain strings
+- Food and transport edited via popup dialogs instead of inline inputs — buttons show summary, click to open editor
+
+#### Passenger Page Improvements
+- Food and transport now displayed contextually: food + departure transport in departure column, arrival transport in arrival column (previously all lumped in a footer row)
+- Food links render as clickable "View Menu / Order" links
+- Transport contact numbers render as clickable `tel:` links for mobile calling
+- **Block times now match planner exactly** — planner serializes computed block times (with wind correction) into `bt` state key; pax page reads them directly instead of recalculating independently
+
+#### Save Reliability Fixes
+- **Fixed crash in `buildURL()`** — referenced `legCalc` (local to `recalc()`) instead of `lastLegCalc` (global). This caused every save, share link, and URL update to throw a `ReferenceError`. All saves were silently failing.
+- **`doSave` now checks HTTP status** — catches 401 (session expired) and shows login screen instead of falsely displaying "Saved" toast
+- **`doSave` checks for error in JSON response** — catches server-side errors
+- **Active input flushed before save** — `document.activeElement.blur()` ensures in-progress edits are committed to the `legs` array
+- **`saveTrip`/`doSave` return promises** — callers can await completion
+- **"Go Home + Save" waits for save** — replaced 300ms `setTimeout` race with `.then()` chain; navigates home only after save succeeds
+- **`restoreVersion` waits for save** — toast shows after save actually completes
+- **`loadTrip` sets `lastSavedState`** — loading from trips dropdown no longer falsely triggers "unsaved changes" prompt
+
+#### Share Link Fixes
+- "Share with Passengers" and "Share with Planners" now auto-save if trip hasn't been saved yet, then share — eliminates the "save trip first" loop
+- Fixed deployment path in CLAUDE.md (`flight-planer` → `trip-planner`)
+
+#### Version History
+- Only show last 5 versions by default, with "Show N more..." link to expand
+
 ### 2026-03-14 — Trip Locking
 
 - **Concurrent edit protection:** When a user opens a trip, they acquire a lock. Other users see "X is currently editing this trip. View only." with Save disabled. Heartbeat every 30s; lock expires after 60s of inactivity. Released on navigate away, go home, or browser close.
@@ -51,8 +87,9 @@
 - **Passenger names** — input fields per leg based on pax count. Setting count on subsequent legs inherits names from previous leg only (not all earlier legs), since passengers typically board/deplane one leg at a time.
 
 #### Per-Leg Fields
-- **Food/catering** and **ground transport** — free text per leg, pipe-separated in state
-- Passenger page shows "No food arranged" / "No ground transport arranged" when empty
+- **Food/catering** — structured per leg (description, link, delivery time), serialized as `desc~link~time` pipe-separated in `fd` state key. Edited via popup dialog.
+- **Ground transport** — separate departure and arrival transport per leg (provider, contact, location), serialized as `provider~contact~location` in `gtd`/`gta` state keys. Edited via popup dialogs.
+- Passenger page shows food in departure column, transport in respective departure/arrival columns
 
 #### FBO Improvements
 - **CAA preferred FBOs** highlighted with ★ (CAA) in dropdown (data from caa.org)
@@ -120,7 +157,7 @@
 
 ### 2025-12 — Initial Release
 
-- Basic multi-leg flight planner with haversine distance
+- Basic multi-leg trip planner with haversine distance
 - Airport autocomplete from OurAirports data
 - G550, PC-12, and custom aircraft profiles
 - URL-based state sharing

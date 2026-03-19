@@ -166,6 +166,7 @@ if ($method === 'GET' && isset($_GET['id'])) {
         'saved' => $row['saved_at'],
         'savedBy' => $row['saved_by'],
         'version' => $row['version'],
+        'flightbridgeTripId' => $row['flightbridge_trip_id'] ?? null,
     ];
     echo json_encode($out);
     exit;

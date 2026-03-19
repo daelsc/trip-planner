@@ -55,9 +55,9 @@ function fbRequest($method, $url, $body = null) {
     global $cookieJar;
     $cookieHeader = implode('; ', array_map(fn($k, $v) => "$k=$v", array_keys($cookieJar), $cookieJar));
     $headers = "Cookie: $cookieHeader\r\nUser-Agent: FlightPlanner/1.0\r\n";
-    if ($body !== null) {
+    if ($method === 'POST') {
         $headers .= "Content-Type: application/x-www-form-urlencoded\r\n";
-        $headers .= "Content-Length: " . strlen($body) . "\r\n";
+        $headers .= "Content-Length: " . strlen($body ?? '') . "\r\n";
     }
     $ctx = stream_context_create(['http' => [
         'method' => $method,
@@ -69,16 +69,18 @@ function fbRequest($method, $url, $body = null) {
     ]]);
     $resp = @file_get_contents($url, false, $ctx);
     $rh = $http_response_header ?? [];
+    $location = null;
     foreach ($rh as $h) {
         if (stripos($h, 'Set-Cookie:') === 0) {
             $p = explode(';', trim(substr($h, 11)))[0];
             [$n, $v] = explode('=', $p, 2);
             $cookieJar[trim($n)] = trim($v);
         }
+        if (stripos($h, 'Location:') === 0) $location = trim(substr($h, 9));
     }
     $status = 0;
     if (!empty($rh[0])) { preg_match('/(\d{3})/', $rh[0], $m); $status = (int)($m[1] ?? 0); }
-    return ['status' => $status, 'body' => $resp];
+    return ['status' => $status, 'body' => $resp, 'location' => $location];
 }
 
 // --- Login ---
