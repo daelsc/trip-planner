@@ -57,10 +57,10 @@ Hosted at `thesemite.com/trip-planner/`. Deploy by SSH (`ssh des@thesemite.com`)
 
 **Deploy command:**
 ```bash
-rsync -avz --exclude='.git' --exclude='flights.db' --exclude='flights.db-wal' --exclude='flights.db-shm' --exclude='.env' --exclude='fbo_cache' --exclude='saved_trips' --exclude='fbos.json' --exclude='fbos_progress.json' --exclude='scrape_fbos.py' --exclude='node_modules' ./ des@thesemite.com:/home/des/public_html/trip-planner/
+rsync -avz --no-perms --no-owner --no-group --exclude='.git' --exclude='flights.db' --exclude='flights.db-wal' --exclude='flights.db-shm' --exclude='.env' --exclude='fbo_cache' --exclude='saved_trips' --exclude='fbos.json' --exclude='fbos_progress.json' --exclude='scrape_fbos.py' --exclude='node_modules' ./ des@thesemite.com:/home/des/public_html/trip-planner/
 ```
 
-**Important:** The deploy directory must be writable by `www-data` (chmod 777) so SQLite can create WAL/SHM files. Verify after deploy: `chmod 777 /home/des/public_html/trip-planner/`
+**Important:** The deploy directory must be writable by `www-data` (chmod 777) so SQLite can create WAL/SHM files. The `--no-perms` flag prevents rsync from resetting this.
 
 ## Local Development
 
