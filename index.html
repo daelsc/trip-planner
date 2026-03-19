@@ -191,6 +191,8 @@ textarea.leg-extra-input { resize: vertical; font-family: inherit; display: bloc
 .fb-not-notified { color: #94a3b8; }
 .fb-up-to-date { color: #22c55e; }
 .fb-update-needed { color: #f59e0b; cursor: pointer; }
+.fb-badge { font-size: 0.65rem; font-weight: 700; margin-left: 0.25rem; vertical-align: middle; }
+.fbo-notify-row { display: flex; align-items: center; gap: 0.2rem; margin-top: 1px; }
 
 /* Loading spinner */
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; }
@@ -625,11 +627,13 @@ function fboSelectHtml(icao, legIdx, field, selected) {
     return c?.loading ? '<div class="fbo-loading">Loading FBOs...</div>' : '';
   }
   const isOther = selected === '__other__';
+  const side = field === 'depFbo' ? 'dep' : 'arr';
+  const badge = fboNotifyBadgeHtml(legIdx, side);
   // Apply default if nothing selected yet and FBOs exist
   const effective = selected || (c.fbos.length ? (DEFAULT_FBOS[icao] || '') : '');
   // Always show select even if no FBOs (user can pick Other)
   if (!c.fbos.length && !isOther) {
-    let html = `<select class="fbo-select" data-l="${legIdx}" data-fbo="${field}"><option value="">No FBOs found</option><option value="__other__">Other...</option></select>`;
+    let html = `<div class="fbo-notify-row"><select class="fbo-select" data-l="${legIdx}" data-fbo="${field}"><option value="">No FBOs found</option><option value="__other__">Other...</option></select>${badge}</div>`;
     return html;
   }
   // If we just applied a default, persist it to the leg
@@ -637,14 +641,14 @@ function fboSelectHtml(icao, legIdx, field, selected) {
     legs[legIdx][field] = effective;
   }
   const caaFbo = CAA_FBOS[icao];
-  let html = `<select class="fbo-select" data-l="${legIdx}" data-fbo="${field}"><option value="">FBO...</option>`;
+  let html = `<div class="fbo-notify-row"><select class="fbo-select" data-l="${legIdx}" data-fbo="${field}"><option value="">FBO...</option>`;
   for (const f of c.fbos) {
     const isCaa = caaFbo && f.name.includes(caaFbo);
     const label = isCaa ? `★ ${f.name} (CAA)` : f.name;
     html += `<option value="${esc(f.name)}"${f.name === effective && !isOther ? ' selected' : ''}>${esc(label)}</option>`;
   }
   html += `<option value="__other__"${isOther ? ' selected' : ''}>Other...</option>`;
-  html += '</select>';
+  html += `</select>${badge}</div>`;
   // Custom FBO fields when "Other" is selected
   if (isOther) {
     const customField = field === 'depFbo' ? 'depFboCustom' : 'arrFboCustom';
@@ -1022,6 +1026,7 @@ function recalc() {
     if (depCity) depCellHtml += `<div class="icao-city">${esc(depCity)}</div>`;
     depCellHtml += depRwy;
     if (i === 0 && leg.dep) depCellHtml += fboSelectHtml(leg.dep, i, 'depFbo', leg.depFbo);
+    if (i > 0 && leg.dep) depCellHtml += fboNotifyBadgeHtml(i, 'dep');
     // Date/time inputs
     depCellHtml += `<div class="dep-dt" style="margin-top:2px">`;
     depCellHtml += `<input class="date-input" type="date" value="${esc(curDepDate)}" data-dep-l="${curDepIndex}" data-dep-f="date">`;
@@ -1634,22 +1639,72 @@ document.addEventListener('click', e => {
 
 let currentTripId = null;
 let currentFbTripId = null;
-let currentFbPushedSnapshot = null;
+let currentFbPushedSnapshot = null; // JSON array of per-leg {dep,arr,depFbo,arrFbo,depTime,arrTime}
 let lockHeartbeat = null;
 let tripLocked = false;
 
-// Keys from trip state that FlightBridge cares about
-const FB_SNAPSHOT_KEYS = ['l','t','d','dd','df','af','px'];
+// Format a Date as local date+time in a timezone (matches FlightBridge push format)
+function fmtLocalDtSnap(dt, tz) {
+  if (!dt || !tz) return '';
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(dt);
+  const p = {}; parts.forEach(x => p[x.type] = x.value);
+  return `${+p.month}/${+p.day}/${p.year} ${p.hour}:${p.minute}`;
+}
 
-function buildFbSnapshot(state) {
-  const snap = {};
-  for (const k of FB_SNAPSHOT_KEYS) {
-    if (state[k] !== undefined && state[k] !== '') snap[k] = state[k];
+// Build per-leg snapshot array from current legs + computed times
+function buildFbSnapshot() {
+  const snap = [];
+  for (let i = 0; i < legs.length; i++) {
+    const leg = legs[i], lc = lastLegCalc[i];
+    const depTz = aptIdx[leg.dep]?.tz || 'UTC';
+    const arrTz = aptIdx[leg.arr]?.tz || 'UTC';
+    const depFbo = i === 0 ? (leg.depFbo || '') : (legs[i-1]?.arrFbo || '');
+    snap.push({
+      dep: leg.dep || '', arr: leg.arr || '',
+      depFbo: depFbo, arrFbo: leg.arrFbo || '',
+      depTime: fmtLocalDtSnap(lc?.departTime, depTz),
+      arrTime: fmtLocalDtSnap(lc?.arriveTime, arrTz),
+    });
   }
-  // Sort keys for stable comparison
-  const sorted = {};
-  for (const k of Object.keys(snap).sort()) sorted[k] = snap[k];
-  return JSON.stringify(sorted);
+  return JSON.stringify(snap);
+}
+
+// Get the pushed snapshot for a specific leg+side
+function getFbSlotStatus(legIdx, side) {
+  if (!currentFbTripId || !currentFbPushedSnapshot) return 'none';
+  let pushed;
+  try { pushed = JSON.parse(currentFbPushedSnapshot); } catch { return 'none'; }
+  if (!Array.isArray(pushed) || !pushed[legIdx]) return 'none';
+  const ps = pushed[legIdx];
+  const leg = legs[legIdx];
+  const lc = lastLegCalc[legIdx];
+  if (!leg) return 'none';
+  const depTz = aptIdx[leg.dep]?.tz || 'UTC';
+  const arrTz = aptIdx[leg.arr]?.tz || 'UTC';
+  if (side === 'dep') {
+    // For legs > 0, dep FBO is the previous leg's arrival FBO
+    const curDepFbo = legIdx === 0 ? (leg.depFbo || '') : (legs[legIdx-1]?.arrFbo || '');
+    const fboMatch = curDepFbo === (ps.depFbo || '');
+    const aptMatch = (leg.dep || '') === (ps.dep || '');
+    const timeMatch = fmtLocalDtSnap(lc?.departTime, depTz) === (ps.depTime || '');
+    return (fboMatch && aptMatch && timeMatch) ? 'current' : 'stale';
+  } else {
+    const fboMatch = (leg.arrFbo || '') === (ps.arrFbo || '');
+    const aptMatch = (leg.arr || '') === (ps.arr || '');
+    const timeMatch = fmtLocalDtSnap(lc?.arriveTime, arrTz) === (ps.arrTime || '');
+    return (fboMatch && aptMatch && timeMatch) ? 'current' : 'stale';
+  }
+}
+
+function fboNotifyBadgeHtml(legIdx, side) {
+  if (!currentFbTripId) return '';
+  const status = getFbSlotStatus(legIdx, side);
+  if (status === 'current') {
+    return '<span class="fb-badge fb-up-to-date" title="FBO notified">&#x2713;</span>';
+  } else if (status === 'stale') {
+    return `<span class="fb-badge fb-update-needed" title="FBO notification outdated — click Notify FBO to update">!</span>`;
+  }
+  return '';
 }
 
 function updateFbStatus() {
@@ -1663,10 +1718,17 @@ function updateFbStatus() {
     if (btn) btn.textContent = 'Notify FBO';
     return;
   }
-  const currentSnap = buildFbSnapshot(getTripState());
-  if (currentSnap === currentFbPushedSnapshot) {
+  // Check if any slot is stale
+  let anyStale = false;
+  for (let i = 0; i < legs.length; i++) {
+    if (getFbSlotStatus(i, 'dep') === 'stale' || getFbSlotStatus(i, 'arr') === 'stale') {
+      anyStale = true;
+      break;
+    }
+  }
+  if (!anyStale) {
     el.className = 'fb-status fb-up-to-date';
-    el.textContent = 'FBO notified \u2713';
+    el.textContent = 'FBOs notified \u2713';
     if (btn) btn.textContent = 'Notify FBO';
   } else {
     el.className = 'fb-status fb-update-needed';
@@ -1942,7 +2004,7 @@ function notifyFBO() {
         departure: leg.dep, arrival: leg.arr,
         departureDate: depLocal.date, departureTime: depLocal.time,
         arrivalDate: arrLocal ? arrLocal.date : '', arrivalTime: arrLocal ? arrLocal.time : '',
-        departureFbo: leg.depFbo || '', arrivalFbo: leg.arrFbo || '',
+        departureFbo: (i === 0 ? leg.depFbo : (legs[i-1]?.arrFbo || '')) || '', arrivalFbo: leg.arrFbo || '',
         pax: leg.pax || 0,
       });
     });
@@ -1961,7 +2023,7 @@ function notifyFBO() {
           showToast(`FBO ${action}: ${cnt} leg${cnt !== 1 ? 's' : ''}` + (data.tripId ? ` (Trip #${data.tripId})` : ''));
           // Update local state so status indicator goes green
           currentFbTripId = data.tripId || currentFbTripId;
-          currentFbPushedSnapshot = data.pushedSnapshot || buildFbSnapshot(getTripState());
+          currentFbPushedSnapshot = data.pushedSnapshot || buildFbSnapshot();
           updateFbStatus();
           if (currentTripId) fetchFlightBridgeServices();
         } else {

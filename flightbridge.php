@@ -391,17 +391,21 @@ if (!$success) {
     }
 }
 
-// Save FlightBridge trip ID and pushed state snapshot back to our database
+// Save FlightBridge trip ID and per-leg pushed snapshot back to our database
 if ($success && $localTripId) {
     if (!isset($db)) { require_once __DIR__ . '/db.php'; $db = getDb(); }
-    // Build snapshot of the state keys that FlightBridge cares about
-    $stateRow = $db->prepare('SELECT state FROM trips WHERE id = ?');
-    $stateRow->execute([$localTripId]);
-    $curState = json_decode($stateRow->fetchColumn(), true) ?: [];
-    $fbKeys = ['l','t','d','dd','df','af','px'];
+    // Build per-leg snapshot from the legs that were just pushed
     $snapshot = [];
-    foreach ($fbKeys as $k) { if (isset($curState[$k]) && $curState[$k] !== '') $snapshot[$k] = $curState[$k]; }
-    ksort($snapshot);
+    foreach ($legs as $leg) {
+        $snapshot[] = [
+            'dep' => $leg['departure'] ?? '',
+            'arr' => $leg['arrival'] ?? '',
+            'depFbo' => $leg['departureFbo'] ?? '',
+            'arrFbo' => $leg['arrivalFbo'] ?? '',
+            'depTime' => ($leg['departureDate'] ?? '') . ' ' . ($leg['departureTime'] ?? ''),
+            'arrTime' => ($leg['arrivalDate'] ?? '') . ' ' . ($leg['arrivalTime'] ?? ''),
+        ];
+    }
     $snapshotJson = json_encode($snapshot);
 
     $stmt = $db->prepare('UPDATE trips SET flightbridge_trip_id = ?, flightbridge_pushed_snapshot = ? WHERE id = ?');
