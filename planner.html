@@ -38,51 +38,8 @@ h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.25rem; }
 <body>
 <div id="content" class="loading">Loading trip...</div>
 
+<script src="flight-math.js"></script>
 <script>
-const PROFILES = {
-  G550:   { speed: 478, climbSpeed: 325, descentSpeed: 325, phaseMin: 15, startup: 20, shutdown: 10 },
-  PC12:   { speed: 270, climbSpeed: 180, descentSpeed: 180, phaseMin: 15, startup: 10, shutdown: 5 },
-  custom: { speed: 250, startup: 10, shutdown: 5 },
-};
-
-const R_NM = 3440.065, toRad = d => d * Math.PI / 180;
-function haversine(lat1, lon1, lat2, lon2) {
-  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2 * R_NM * Math.asin(Math.sqrt(a));
-}
-
-function fmtInTz(date, tz) {
-  const time = date.toLocaleString('en-US', { timeZone: tz, hour:'2-digit', minute:'2-digit', hour12: false });
-  let abbr;
-  try { abbr = date.toLocaleString('en-US', { timeZone: tz, timeZoneName:'short' }).split(' ').pop(); }
-  catch { abbr = tz.split('/').pop(); }
-  return { time, abbr };
-}
-
-function fmtDate(date, tz) {
-  return date.toLocaleString('en-US', { timeZone: tz, weekday:'short', month:'short', day:'numeric' });
-}
-
-function dateInTz(dtStr, tz) {
-  const [dp, tp] = dtStr.split('T');
-  const [y,mo,d] = dp.split('-').map(Number);
-  const [h,m] = tp.split(':').map(Number);
-  let guess = new Date(Date.UTC(y, mo-1, d, h, m, 0));
-  for (let i = 0; i < 3; i++) {
-    const f = new Intl.DateTimeFormat('en-US', {
-      timeZone:tz, year:'numeric', month:'numeric', day:'numeric',
-      hour:'numeric', minute:'numeric', hour12:false
-    });
-    const parts = {};
-    for (const {type, value} of f.formatToParts(guess)) parts[type] = +value;
-    const diff = ((h - parts.hour)*60 + (m - parts.minute))*60000 + (d - parts.day)*86400000;
-    guess = new Date(guess.getTime() + diff);
-  }
-  return guess;
-}
-
-function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 let aptIdx = {};
 const fboCache = {};
@@ -205,29 +162,21 @@ async function loadAndRender() {
   }
 
   const computed = [];
+  const storedBlocks = p.bt ? p.bt.split(',') : [];
 
   for (let i = 0; i < legs.length; i++) {
     const leg = legs[i];
     const depApt = aptIdx[leg.dep], arrApt = aptIdx[leg.arr];
     const depTz = depApt?.tz, arrTz = arrApt?.tz;
 
-    let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
-    let flightMin = null;
-    if (distNm != null && profile.speed > 0) {
-      const cruiseGs = profile.speed;
-      if (profile.climbSpeed && profile.descentSpeed && profile.phaseMin) {
-        const climbDist = profile.climbSpeed * (profile.phaseMin / 60);
-        const descentDist = profile.descentSpeed * (profile.phaseMin / 60);
-        if (distNm <= climbDist + descentDist) {
-          flightMin = (distNm / ((profile.climbSpeed + profile.descentSpeed) / 2)) * 60;
-        } else {
-          flightMin = profile.phaseMin + ((distNm - climbDist - descentDist) / cruiseGs) * 60 + profile.phaseMin;
-        }
-      } else {
-        flightMin = (distNm / cruiseGs) * 60;
-      }
+    // Use pre-computed block times from planner (includes wind correction)
+    let blockMin = (storedBlocks[i] != null && storedBlocks[i] !== '') ? +storedBlocks[i] : null;
+
+    // Fallback: calculate without wind if no stored block time
+    if (blockMin == null) {
+      let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
+      blockMin = calcBlockMin(distNm, profile, 0);
     }
-    let blockMin = (flightMin != null) ? profile.startup + flightMin + profile.shutdown : null;
 
     let departTime = null, arriveTime = null;
     if (currentTime && blockMin != null) {

@@ -391,11 +391,21 @@ if (!$success) {
     }
 }
 
-// Save FlightBridge trip ID back to our database
+// Save FlightBridge trip ID and pushed state snapshot back to our database
 if ($success && $localTripId) {
     if (!isset($db)) { require_once __DIR__ . '/db.php'; $db = getDb(); }
-    $stmt = $db->prepare('UPDATE trips SET flightbridge_trip_id = ? WHERE id = ?');
-    $stmt->execute([$tripId, $localTripId]);
+    // Build snapshot of the state keys that FlightBridge cares about
+    $stateRow = $db->prepare('SELECT state FROM trips WHERE id = ?');
+    $stateRow->execute([$localTripId]);
+    $curState = json_decode($stateRow->fetchColumn(), true) ?: [];
+    $fbKeys = ['l','t','d','dd','df','af','px'];
+    $snapshot = [];
+    foreach ($fbKeys as $k) { if (isset($curState[$k]) && $curState[$k] !== '') $snapshot[$k] = $curState[$k]; }
+    ksort($snapshot);
+    $snapshotJson = json_encode($snapshot);
+
+    $stmt = $db->prepare('UPDATE trips SET flightbridge_trip_id = ?, flightbridge_pushed_snapshot = ? WHERE id = ?');
+    $stmt->execute([$tripId, $snapshotJson, $localTripId]);
 }
 
 $resp = [
@@ -404,6 +414,7 @@ $resp = [
     'tripId' => $tripId,
     'tripUrl' => $tripId ? "$FB_BASE/FlightCenter/TripsLink?tripToOpen=$tripId" : null,
     'results' => $results,
+    'pushedSnapshot' => $snapshotJson ?? null,
 ];
 if ($debug) $resp['debug'] = $debug;
 if (!$success) $resp['error'] = 'FlightBridge submit failed (status ' . ($submitResp['status'] ?? '?') . ')';

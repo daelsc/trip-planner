@@ -2,19 +2,9 @@
 session_start();
 header('Content-Type: application/json');
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/trip-lib.php';
 
 $db = getDb();
-
-function tripEndDate($state, $startDate) {
-    // Best effort: use last departure date override, or fall back to start date
-    if (!empty($state['dd'])) {
-        $dates = explode(',', $state['dd']);
-        for ($i = count($dates) - 1; $i >= 0; $i--) {
-            if (!empty($dates[$i])) return $dates[$i];
-        }
-    }
-    return $startDate;
-}
 
 // Expire stale locks (no heartbeat in 60s)
 $db->exec("DELETE FROM trip_locks WHERE datetime(locked_at) < datetime('now', '-60 seconds')");
@@ -78,7 +68,7 @@ if ($method !== 'GET' && empty($_SESSION['authed'])) {
 
 // List all saved trips
 if ($method === 'GET' && !isset($_GET['id'])) {
-    $rows = $db->query("SELECT id, number, name, route, purpose, cargo, state, version, saved_at, saved_by, flightbridge_trip_id FROM trips ORDER BY saved_at DESC")->fetchAll(PDO::FETCH_ASSOC);
+    $rows = $db->query("SELECT id, number, name, route, purpose, cargo, state, version, saved_at, saved_by, flightbridge_trip_id, flightbridge_pushed_snapshot FROM trips ORDER BY saved_at DESC")->fetchAll(PDO::FETCH_ASSOC);
     $trips = [];
     foreach ($rows as $r) {
         $state = json_decode($r['state'], true) ?: [];
@@ -100,6 +90,7 @@ if ($method === 'GET' && !isset($_GET['id'])) {
             'savedBy' => $r['saved_by'] ?? '',
             'version' => $r['version'] ?? 1,
             'flightbridgeTripId' => $r['flightbridge_trip_id'] ?? null,
+            'flightbridgePushedSnapshot' => $r['flightbridge_pushed_snapshot'] ?? null,
         ];
     }
     // Sort chronologically by trip date (earliest first), then by number
@@ -167,6 +158,7 @@ if ($method === 'GET' && isset($_GET['id'])) {
         'savedBy' => $row['saved_by'],
         'version' => $row['version'],
         'flightbridgeTripId' => $row['flightbridge_trip_id'] ?? null,
+        'flightbridgePushedSnapshot' => $row['flightbridge_pushed_snapshot'] ?? null,
     ];
     echo json_encode($out);
     exit;
@@ -200,18 +192,8 @@ if ($method === 'POST') {
     $id = preg_replace('/[^a-zA-Z0-9_-]/', '', $id);
 
     // Build route string from legs
-    $route = '';
     $state = $input['state'];
-    if (isset($state['l'])) {
-        $pairs = explode(',', $state['l']);
-        $airports = [];
-        foreach ($pairs as $p) {
-            $parts = explode('-', $p);
-            if (empty($airports)) $airports[] = $parts[0] ?? '';
-            $airports[] = $parts[1] ?? '';
-        }
-        $route = implode(' → ', $airports);
-    }
+    $route = buildRoute($state);
 
     // Extract purpose and cargo from state
     $purpose = $state['pu'] ?? '';

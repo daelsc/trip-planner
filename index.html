@@ -186,6 +186,12 @@ textarea.leg-extra-input { resize: vertical; font-family: inherit; display: bloc
 .toast { position: fixed; top: 1rem; right: 1rem; background: #22c55e; color: white; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.82rem; opacity: 0; transition: opacity 0.3s; z-index: 300; pointer-events: none; }
 .toast.show { opacity: 1; }
 
+/* FBO notification status */
+.fb-status { font-size: 0.72rem; vertical-align: middle; }
+.fb-not-notified { color: #94a3b8; }
+.fb-up-to-date { color: #22c55e; }
+.fb-update-needed { color: #f59e0b; cursor: pointer; }
+
 /* Loading spinner */
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -386,7 +392,7 @@ textarea.leg-extra-input { resize: vertical; font-family: inherit; display: bloc
     <button class="btn-sm" onclick="sharePaxLink()">Share with Passengers</button>
     <button class="btn-sm" onclick="sharePlannerLink()">Share with Planner</button>
     <button class="btn-sm crew-only" onclick="try{pushToForeFlight();}catch(e){alert('Error: '+e.message);}">Push to ForeFlight</button>
-    <button class="btn-sm crew-only" onclick="try{pushToFlightBridge();}catch(e){alert('Error: '+e.message);}">Push to FlightBridge</button>
+    <span class="crew-only" style="display:inline-flex;align-items:center;gap:0.3rem"><button class="btn-sm" id="fbNotifyBtn" onclick="try{notifyFBO();}catch(e){alert('Error: '+e.message);}">Notify FBO</button><span id="fbStatus" class="fb-status"></span></span>
     <div class="trips-dropdown">
       <button class="btn-secondary btn-sm" onclick="toggleTripsMenu()">Trips ▾</button>
       <div class="trips-menu" id="tripsMenu"></div>
@@ -491,13 +497,12 @@ textarea.leg-extra-input { resize: vertical; font-family: inherit; display: bloc
 
 <div class="toast" id="toast">URL copied to clipboard</div>
 
+<script src="flight-math.js"></script>
 <script>
-// ── Profiles ──
-const PROFILES = {
-  G550:   { speed: 478, climbSpeed: 325, descentSpeed: 325, phaseMin: 15, startup: 20, shutdown: 10, alt: 400, show: 90, rwyRed: 5500, rwyYellow: 7000 },
-  PC12:   { speed: 270, climbSpeed: 180, descentSpeed: 180, phaseMin: 15, startup: 10, shutdown: 5,  alt: 280, show: 45,  rwyRed: 2000, rwyYellow: 3000 },
-  custom: { speed: 250, startup: 10, shutdown: 5,  alt: 350, show: 60,  rwyRed: 3000, rwyYellow: 5000 },
-};
+// ── Profiles (extend shared PROFILES with UI-specific fields) ──
+Object.assign(PROFILES.G550, { alt: 400, show: 90, rwyRed: 5500, rwyYellow: 7000 });
+Object.assign(PROFILES.PC12, { alt: 280, show: 45, rwyRed: 2000, rwyYellow: 3000 });
+Object.assign(PROFILES.custom, { alt: 350, show: 60, rwyRed: 3000, rwyYellow: 5000 });
 
 
 // Altitude (ft) -> pressure level (hPa) for Open-Meteo
@@ -538,26 +543,12 @@ const airportsPromise = fetch('airports.json').then(r=>r.json()).then(data => {
     '<p style="color:#64748b"><code>python3 -m http.server 8080</code></p>';
 });
 
-// ── Utility ──
-function normalizeTime(v) {
-  v = v.replace(/[^0-9:]/g, '');
-  // Accept "1430" or "14:30" or "930" or "9:30"
-  if (/^\d{3,4}$/.test(v)) v = v.slice(0,-2) + ':' + v.slice(-2);
-  const m = v.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return '';
-  const h = parseInt(m[1],10), mn = parseInt(m[2],10);
-  if (h > 23 || mn > 59) return '';
-  return h.toString().padStart(2,'0') + ':' + mn.toString().padStart(2,'0');
-}
+// ── Utility (normalizeTime, num, numOr, numNull, esc from flight-math.js) ──
 function setupTimeInput(el, onUpdate) {
   el.addEventListener('blur', () => { const n = normalizeTime(el.value); el.value = n; onUpdate(n); });
   el.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); el.blur(); } });
 }
-function num(v) { const n = parseInt(v,10); return isNaN(n) ? 0 : n; }
-function numOr(v, d) { const n = parseInt(v,10); return isNaN(n) ? d : n; }
-function numNull(v) { const n = parseInt(v,10); return isNaN(n) ? null : n; }
 function $(id) { return document.getElementById(id); }
-function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function fmtTripDate(d) { if (!d) return ''; const [y,m,dd] = d.split('-'); return `${+m}/${+dd}`; }
 
 function getProfile() {
@@ -594,27 +585,7 @@ function updatePlaceholders() {
   $('showTime').placeholder = b.show;
 }
 
-// ── Haversine ──
-const R_NM = 3440.065, toRad = d => d * Math.PI / 180, toDeg = r => r * 180 / Math.PI;
-function haversine(lat1, lon1, lat2, lon2) {
-  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
-  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
-  return 2 * R_NM * Math.asin(Math.sqrt(a));
-}
-function bearing(lat1, lon1, lat2, lon2) {
-  const dLon = toRad(lon2-lon1), la1 = toRad(lat1), la2 = toRad(lat2);
-  const y = Math.sin(dLon)*Math.cos(la2);
-  const x = Math.cos(la1)*Math.sin(la2) - Math.sin(la1)*Math.cos(la2)*Math.cos(dLon);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-}
-
-// ── Time formatting ──
-function fmtDur(min) {
-  if (min == null || min < 0) return '—';
-  const total = Math.round(min);
-  const h = Math.floor(total/60), m = total % 60;
-  return `${h}:${m.toString().padStart(2,'0')}`;
-}
+// ── haversine, bearing, fmtDur, fmtInTz, dateInTz, tzParts, timeToDate from flight-math.js ──
 
 function fmtTimeCell(date, primaryTz) {
   if (!date || !primaryTz) return '—';
@@ -639,25 +610,6 @@ function fmtTimeCell(date, primaryTz) {
   lines.push(`<span class="dim">${z.time}Z</span> <span class="date-lbl">${dateStr}</span>`);
   return lines.join('<br>');
 }
-
-function fmtInTz(date, tz) {
-  const time = date.toLocaleString('en-US', { timeZone: tz, hour:'2-digit', minute:'2-digit', hour12:false });
-  let abbr;
-  try { abbr = date.toLocaleString('en-US', { timeZone: tz, timeZoneName:'short' }).split(' ').pop(); }
-  catch { abbr = tz.split('/').pop(); }
-  return { time, abbr };
-}
-
-// Combine HH:MM time with a reference date in a timezone.
-// If the resulting time is before refDate, advance by days until it's after.
-function timeToDate(timeStr, refDate, tz) {
-  const fp = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year:'numeric', month:'2-digit', day:'2-digit' }).format(refDate);
-  let dt = dateInTz(`${fp}T${timeStr}`, tz);
-  // Keep advancing by 1 day until we're at or after the reference time
-  while (dt < refDate) dt = new Date(dt.getTime() + 86400000);
-  return dt;
-}
-
 
 // ── CAA Preferred FBOs ──
 const CAA_FBOS = {"KPQL":"Southern Sky Aviation","KLUK":"Waypoint Aviation","KCYS":"Legend AeroServe","KCWI":"Clinton Municipal Airport","CZBB":"Boundary Bay Air Services","KGKY":"Arlington Air Center","KDVT":"Cutter Aviation","KSPF":"Eagle Aviation, LLC.","KLMT":"RMC Aviation","KSBY":"Azure Flight Support","KATW":"Appleton Flight Center","KMHR":"Mather Jet Center","KBPI":"Joint Big Piney","KPVW":"Tradewind FBO","KHOU":"Wilson Air Center","F82":"ClearTech Aviation","KBUR":"Hollywood Burbank Jet Center","KCAE":"Columbia Aviation","KABQ":"Cutter Aviation","KPIE":"Sheltair","KMLB":"Sheltair","KLOZ":"London-Corbin Airport","KVPC":"Phoenix Air","KRNO":"Stellar Aviation","KCSV":"Azure Flight Support","KMQY":"Azure Flight Support","KSJT":"San Angelo Jet Center","KAXH":"Houston Southwest Airport","KABR":"Hangar 9","KEVW":"Evanston Aviation","CYYC":"Signature Aviation","LSZH":"Jet Aviation","KCHA":"Wilson Air Center","KADS":"Million Air","KJNX":"Johnston Regional Airport","KPUB":"Freeman Jet Center","KGEG":"Aero Center","LSGG":"Jet Aviation","KRVS":"Christiansen Jet Center","KTUL":"United States Aviation","TISX":"Bohlke International Aviation","KDAY":"PremierFBO","KVRB":"Sun Aviation, Inc.","KLCI":"Emerson Aviation","KHDC":"Top Gun Hammond","KSRB":"Upper Cumberland Regional Jet Center","KGPT":"Million Air","KGCM":"Claremore Regional Airport","KBDR":"Three Wing Aviation Group, LLC","KAUS":"Million Air","KSPK":"Utah Aviation","KTDW":"Tradewind FBO","KTMB":"Reliance Aviation","KUVA":"Uvalde Flight Center","EGSS":"Inflite the Jet Centre","KAFO":"Eagle Jet Center","I68":"WCA Jet Center","KCRQ":"Carlsbad Jet Center","KVDF":"Skyport Aviation","KHZY":"Northeast Ohio Regional","X60":"City of Williston","KOAK":"KaiserAir Oakland Jet Center","MYNN":"Jet Nassau","KGSP":"Cerulean Aviation","KPDK":"Aero Center","M40":"Monroe County Airport","KCGI":"Cape Aviation","KSUS":"Million Air","KYIP":"Avflight","KGPH":"APEX Aero Center","KFYV":"Fayetteville Aviation Services","EGGW":"Signature Aviation","KFSD":"Maverick Air Center","KOKV":"Winchester Aviation","KORL":"Sheltair","KSUA":"APP Jet Center","KMEM":"Wilson Air Center","KFCM":"Thunderbird Aviation","KBOI":"Jackson Jet Center","KBIS":"Executive Air Taxi Corporation","KRBD":"Ambassador Jet Center","KRUE":"Russellville Regional Airport","KBTR":"Velocity BTR Jet Center","KHRL":"Sun Valley Aviation","KOJC":"Executive Aircraft Service","KSFB":"Million Air","KHFY":"Indy South Greenwood Airport","KSFF":"Aero Center","KTTN":"FlightServ","KBMG":"Cook Aviation","KGTU":"Cutter Aviation","KHKS":"Skyport Aviation","KISM":"Velocity FBO Network","KHEF":"APP Jet Center","KTEB":"Signature Aviation West","KWRL":"Hellyer Aviation","KCCO":"CCO Airport Services","KRWI":"Rocky Mount Wilson Regional Airport","KHSI":"Hastings Air","KGRR":"Avflight","KCXY":"Skyport Aviation","KCPS":"Jet Aviation","KCMH":"Signature Aviation","CYVR":"Million Air","M22":"Explore Aviation","KBZN":"Jet Aviation","KRQO":"El Reno Flight Center","KCXO":"General Aviation Services","KILM":"Aero Center","CYQX":"Woodward Aviation","KHIO":"Global Aviation Inc.","KCRP":"Sterling Air Service","KVNC":"Skyport Aviation","EHAM":"Jet Aviation","KCPR":"Aero Center","KMKE":"Avflight","KDVO":"Skyshare","KGYY":"B. Coleman Aviation","KJAX":"Sheltair","KLZU":"Aircraft Specialists Jet Center","KAFJ":"Skyward Aviation","KBHM":"Million Air","KDCU":"Pryor Flight Center","KTPA":"Sheltair","KROG":"Beaver Lake Aviation","KSLN":"Avflight","KPNS":"Pensacola Aviation Center, LLC","KHUT":"Wells Aircraft","CYXX":"Fast Air Jet Centre","KBIL":"Edwards Jet Center","KJVL":"Revv Aviation","KMOD":"Modesto Jet Center","KSAT":"Million Air","KCFO":"Colorado Air and Space Port","KPTK":"Pentastar Aviation","KLNK":"Duncan Aviation","KIND":"Million Air","KDSM":"Modern Aviation","KAVK":"Alva Regional Airport","KPVG":"Hampton Roads Executive Airport","KGRB":"Jet Air Group","KCLE":"Jets FBO Network","KPNA":"Top Flight","KLXT":"City of Lee's Summit","KLWM":"Falcon Air","KLBE":"Laurel Highlands Jet Center","KBFI":"Skyservice","KFFM":"Sky Crew Services","KPWM":"Northeast Air","KRNH":"East Metro Jet Center","KCMA":"Air 7","KCNO":"Flying Tigers Aviation","KRZR":"Cleveland Regional Jetport","KSTS":"KaiserAir Santa Rosa Jet Center","KVNY":"Castle & Cooke Aviation","KATY":"ATY Aviation, Inc.","KGSO":"Koury Aviation","KUDD":"Dunes Air","KPEQ":"Crosby Flying Services, LLC","KMVN":"SRT Flightline","KMSO":"Northstar Jet","KOLV":"Memphis Executive Jet Center, LLC","KAFK":"Blue Line Aviation","KPHX":"Cutter Aviation","KJVY":"Honaker Aviation","KSNS":"gateOne","KSUW":"Superior Flying Services, LLC","KDXR":"Reliant Air","KFTW":"Texas Jet","CYWG":"Fast Air Jet Centre","KGTF":"Great Falls Jet Center","KTLH":"Million Air","KFTY":"Hill Aircraft","KMLU":"Avflight","KSTP":"St. Paul Flight Center","KDTN":"Tubreaux Aviation","KAMA":"Haven FBO","KHUM":"Simon Aviation Services","KOQU":"FlightLevel Rhode Island","KBED":"Jet Aviation","KARR":"J.A. Air Center","KAZO":"Duncan Aviation","KBVU":"Boulder City Aviation Services","KCMD":"Cullman Regional Airport","KCBF":"Apex Aero Center","KENW":"Stein's Aircraft Services","KFOE":"Million Air","KEXX":"Fly High Lexington","KSAV":"Sheltair","CYQB":"Lux FBO","H81":"Redline Aviation","KSDL":"Jet Aviation","KAAO":"Clemens Aviation","KODO":"Ector County Odessa Schlemeyer Field","KECP":"Sheltair","KCDS":"Boedeker Flying Service","KCXP":"Stellar Aviation","KACT":"Freeman Jet Center Waco","KBFF":"Classic Aircraft Service","KOWD":"Boston Executive","KBTF":"Skypark Airport","TIST":"Standard Aviation LLC","KOPF":"Fontainebleau Aviation","KDHT":"Starlink Aviation","KMLS":"Miles City Airport","0A9":"Elizabethton Municipal Airport","EINN":"Signature Aviation","KPWK":"Atlantic Aviation","KABI":"Freeman Jet Center Abilene","KDKB":"City of DeKalb","KPWA":"Jetset FBO","M54":"Direct Flight Solutions","KPGA":"American Aviation, Inc.","KNEW":"Flightline First","KEVV":"United Companies Air Center","KCCR":"Concord Jet Center","KFOK":"Signature Aviation","KMAE":"Madera Jet Center","KTRL":"Apex Aero Center","KFFZ":"Cunningham Aviation","KILG":"flyAdvanced","EGGD":"Centreline","KSEE":"Circle Air Group","KHYS":"Hays Aircraft LLC","KCOD":"Beacon Air Group","KLWS":"Hillcrest Aircraft Company","KARG":"Walnut Ridge Regional Airport","CYYZ":"Execaire Aviation","KDAB":"Yelvington Jet Aviation","KFPR":"APP Jet Center","KVQQ":"Million Air","KMGR":"Eagles of America Inc.","KMYF":"Crownair Aviation","KFNL":"jetCenters of Colorado","PHNL":"Castle & Cooke Aviation","KENV":"Wendover Airport","KSRQ":"Ascension FBO Network","KSNA":"Clay Lacy","KRBW":"Lowcountry Regional Airport","KJWN":"Contour Flight Support","KHWD":"APP Jet Center","KSAF":"Atlantic Aviation","KCRG":"Sky Harbor Aviation","KMRB":"MRB Aviation","KECG":"Elizabeth City Regional Airport","KSGU":"Sandstone Aviation","KTUS":"Tucson Jet Center","CYHU":"Lux FBO","KSAD":"Spalsbury Aviation","KELN":"Mt. Stuart Aviation","KSDY":"Richland Aviation","KLAL":"Aero Center","KESN":"Trident Aircraft","KAPA":"jetCenters of Colorado","KFLL":"Sheltair","KROC":"Avflight","KOXR":"Axis Air","KPRC":"Cutter Aviation","KJKA":"Gulf Air Center","KXNX":"Jet Access","KLBF":"Trego-Dugan Aviation","KHOB":"Christian Aero","KCXW":"Conway Regional Airport","KJLN":"Mizzou Aviation","KTHA":"Tullahoma Municipal Airport","MBPV":"Business Aviation Ltd","KIXD":"Advanced Aviation Jet Center","KAPS":"Port of South Louisiana","KLRU":"Francis Aviation LLC","KCNI":"S & S Aviation","KHPN":"Million Air","KTYR":"Johnson Aviation","KELP":"Million Air","KEWB":"NorEast Aviation Services Inc","KJST":"Nulton Aviation Services, Inc.","KLNA":"Stellar Aviation","KTVC":"Avflight","KWDG":"Enid Woodring Regional Airport","KAKO":"Hayes Aviation","KHHR":"Jet Center","KUKF":"Wilkes County Airport","KGYI":"Rise Aviation","KTRM":"Desert Jet Center","KTTA":"Raleigh Executive Jetport","KDDC":"Crotts Aircraft Service","EDDL":"Jet Aviation","KOAJ":"Skyport Aviation","KBFL":"Bakersfield Jet Center","KICT":"Yingling Aviation","KPBI":"Jet Aviation","KUES":"Stein's Aircraft Services, LLC","KFXE":"Banyan Air Service","KCLW":"FlyUSA","KPVU":"Duncan Aviation","KCAK":"Avflight","KAXS":"Altus-Quartz Mt. Regional Airport","KCKB":"V1 Aviation","KTIW":"Narrows Aviation","KLBB":"Million Air Lubbock","KDAL":"Business Jet","KXNA":"Regional Jet Center","KCOS":"Cutter Aviation","KISP":"New York Jet","KMKG":"Executive Air Transport","KTOL":"Grand Aire, Inc.","F05":"Wilbarger County Airport","KJYO":"Kuhn Jet Center","KALO":"Livingston Aviation","KIAD":"Atlantic Aviation","KBIV":"Avflight","KBJC":"Sheltair","KPXE":"Perry Houston County Airport Authority"};
@@ -706,32 +658,7 @@ function fboSelectHtml(icao, legIdx, field, selected) {
   return html;
 }
 
-// Parse "YYYY-MM-DDTHH:MM" as wall-clock in given tz → UTC Date
-function dateInTz(dtStr, tz) {
-  const [dp, tp] = dtStr.split('T');
-  const [y,mo,d] = dp.split('-').map(Number);
-  const [h,m] = tp.split(':').map(Number);
-  let guess = new Date(Date.UTC(y, mo-1, d, h, m, 0));
-  for (let i = 0; i < 3; i++) {
-    const p = tzParts(guess, tz);
-    const diff = ((h - p.h)*60 + (m - p.m))*60000 + (d - p.d)*86400000;
-    guess = new Date(guess.getTime() + diff);
-  }
-  return guess;
-}
-function tzParts(date, tz) {
-  const f = new Intl.DateTimeFormat('en-US', {
-    timeZone:tz, year:'numeric', month:'numeric', day:'numeric',
-    hour:'numeric', minute:'numeric', hour12:false
-  });
-  const o = {};
-  for (const p of f.formatToParts(date)) {
-    if (p.type==='day') o.d = +p.value;
-    if (p.type==='hour') o.h = (+p.value) % 24;
-    if (p.type==='minute') o.m = +p.value;
-  }
-  return o;
-}
+// dateInTz, tzParts from flight-math.js
 
 // ── Autocomplete ──
 function searchAirports(q) {
@@ -1006,29 +933,10 @@ function recalc() {
     // Distance
     let distNm = (depApt && arrApt) ? haversine(depApt.lat, depApt.lon, arrApt.lat, arrApt.lon) : null;
 
-    // Flight time (3-phase: climb, cruise, descent)
-    let flightMin = null;
-    if (distNm != null && profile.speed > 0) {
-      const hw = leg.wind ? leg.wind.headwind : 0;
-      const cruiseGs = Math.max(50, profile.speed - hw);
-      if (profile.climbSpeed && profile.descentSpeed && profile.phaseMin) {
-        const climbGs = Math.max(50, profile.climbSpeed - hw);
-        const descentGs = Math.max(50, profile.descentSpeed - hw);
-        const climbDist = climbGs * (profile.phaseMin / 60);
-        const descentDist = descentGs * (profile.phaseMin / 60);
-        if (distNm <= climbDist + descentDist) {
-          // Short leg: split evenly between climb and descent speeds
-          const avgGs = (climbGs + descentGs) / 2;
-          flightMin = (distNm / avgGs) * 60;
-        } else {
-          const cruiseDist = distNm - climbDist - descentDist;
-          flightMin = profile.phaseMin + (cruiseDist / cruiseGs) * 60 + profile.phaseMin;
-        }
-      } else {
-        flightMin = (distNm / cruiseGs) * 60;
-      }
-    }
-    let blockMin = (flightMin != null) ? profile.startup + flightMin + profile.shutdown : null;
+    // Flight time (3-phase: climb, cruise, descent) via shared module
+    const hw = leg.wind ? leg.wind.headwind : 0;
+    let flightMin = calcFlightMin(distNm, profile, hw);
+    let blockMin = calcBlockMin(distNm, profile, hw);
 
     // Show time row (before first leg and after rest stops)
     if (needsShowRow && currentTime && showMin > 0) {
@@ -1369,6 +1277,9 @@ function recalc() {
   // Crew duty tracker
   lastLegCalc = legCalc;
   updateCrew(legCalc, crewCount, getShowMin());
+
+  // Update FBO notification status
+  updateFbStatus();
 }
 
 // ── Crew duty/rest tracker ──
@@ -1685,12 +1596,16 @@ function loadTrip(id) {
       const p = new URLSearchParams(data.state);
       history.replaceState(null, '', '?' + p.toString());
       currentTripId = id;
+      currentFbTripId = data.flightbridgeTripId || null;
+      currentFbPushedSnapshot = data.flightbridgePushedSnapshot || null;
       parseURL();
       recalc();
       lastSavedState = JSON.stringify(getTripState());
       fetchWinds();
       loadHistoryInline();
       acquireLock(id);
+      updateFbStatus();
+      if (currentFbTripId) fetchFlightBridgeServices();
       showToast('Loaded');
     })
     .catch(() => showToast('Load failed'));
@@ -1718,8 +1633,49 @@ document.addEventListener('click', e => {
 });
 
 let currentTripId = null;
+let currentFbTripId = null;
+let currentFbPushedSnapshot = null;
 let lockHeartbeat = null;
 let tripLocked = false;
+
+// Keys from trip state that FlightBridge cares about
+const FB_SNAPSHOT_KEYS = ['l','t','d','dd','df','af','px'];
+
+function buildFbSnapshot(state) {
+  const snap = {};
+  for (const k of FB_SNAPSHOT_KEYS) {
+    if (state[k] !== undefined && state[k] !== '') snap[k] = state[k];
+  }
+  // Sort keys for stable comparison
+  const sorted = {};
+  for (const k of Object.keys(snap).sort()) sorted[k] = snap[k];
+  return JSON.stringify(sorted);
+}
+
+function updateFbStatus() {
+  const el = $('fbStatus');
+  const btn = $('fbNotifyBtn');
+  if (!el) return;
+  if (!currentTripId) { el.textContent = ''; return; }
+  if (!currentFbTripId) {
+    el.className = 'fb-status fb-not-notified';
+    el.textContent = 'Not notified';
+    if (btn) btn.textContent = 'Notify FBO';
+    return;
+  }
+  const currentSnap = buildFbSnapshot(getTripState());
+  if (currentSnap === currentFbPushedSnapshot) {
+    el.className = 'fb-status fb-up-to-date';
+    el.textContent = 'FBO notified \u2713';
+    if (btn) btn.textContent = 'Notify FBO';
+  } else {
+    el.className = 'fb-status fb-update-needed';
+    el.textContent = 'FBO update needed';
+    el.title = 'Schedule has changed since last FBO notification';
+    el.onclick = () => { try { notifyFBO(); } catch(e) { alert('Error: '+e.message); } };
+    if (btn) btn.textContent = 'Update FBO';
+  }
+}
 
 function acquireLock(tripId) {
   releaseLock();
@@ -1938,8 +1894,8 @@ function pushToForeFlight() {
   });
 }
 
-function pushToFlightBridge() {
-  if (!legs.length) { alert('Add legs before pushing to FlightBridge.'); return; }
+function notifyFBO() {
+  if (!legs.length) { alert('Add legs before notifying FBOs.'); return; }
   if (!lastLegCalc.length) { alert('No calculated leg data. Make sure a start time is set.'); return; }
   const validLegs = [];
   for (let i = 0; i < legs.length; i++) {
@@ -1948,6 +1904,7 @@ function pushToFlightBridge() {
     validLegs.push({ idx: i, leg, lc });
   }
   if (!validLegs.length) { alert('No valid legs to push. Make sure airports and a start time are set.'); return; }
+  const isUpdate = !!currentFbTripId;
   const overlay = document.createElement('div');
   overlay.className = 'ff-overlay';
   let checkboxes = '';
@@ -1957,7 +1914,12 @@ function pushToFlightBridge() {
     const fboInfo = v.leg.arrFbo ? ` <span style="color:#64748b;font-size:0.72rem">FBO: ${v.leg.arrFbo}</span>` : '';
     checkboxes += `<label><input type="checkbox" checked value="${v.idx}"> ${v.leg.dep} → ${v.leg.arr} &nbsp;<span style="color:#64748b;font-size:0.78rem">${depLocal}</span>${fboInfo}</label>`;
   }
-  overlay.innerHTML = `<div class="ff-dialog"><h3>Push to FlightBridge</h3><p style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.75rem">Creates a trip in FlightBridge with FBO notifications, hotel, and ground transport.</p>${checkboxes}<div class="ff-buttons"><button class="ff-cancel" onclick="this.closest('.ff-overlay').remove()">Cancel</button><button class="ff-push" id="fbPushBtn">Push Selected</button></div></div>`;
+  const title = isUpdate ? 'Update FBO Notification' : 'Notify FBOs';
+  const subtitle = isUpdate
+    ? 'Updates the existing FlightBridge trip with the current schedule.'
+    : 'Sends trip details to FBOs via FlightBridge.';
+  const btnLabel = isUpdate ? 'Update FBOs' : 'Notify FBOs';
+  overlay.innerHTML = `<div class="ff-dialog"><h3>${title}</h3><p style="font-size:0.75rem;color:#94a3b8;margin-bottom:0.75rem">${subtitle}</p>${checkboxes}<div class="ff-buttons"><button class="ff-cancel" onclick="this.closest('.ff-overlay').remove()">Cancel</button><button class="ff-push" id="fbPushBtn">${btnLabel}</button></div></div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   document.getElementById('fbPushBtn').addEventListener('click', () => {
@@ -1988,24 +1950,31 @@ function pushToFlightBridge() {
     showToast('Saving trip...');
     const currentRoute = legs.map(l => l.dep).concat(legs.length ? [legs[legs.length-1].arr] : []).filter(Boolean).join(' → ');
     doSave(currentRoute || 'New Trip', currentTripId || null).then(saved => {
-      if (!saved || !currentTripId) { showToast('Save failed — cannot push to FlightBridge'); return; }
-      showToast('Pushing to FlightBridge...');
+      if (!saved || !currentTripId) { showToast('Save failed — cannot notify FBOs'); return; }
+      showToast('Notifying FBOs...');
       fetch('flightbridge.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ legs: fbLegs, tripNumber: currentTripId || '', localTripId: currentTripId || '' }) })
       .then(r => r.json().then(d => ({ status: r.status, data: d })))
       .then(({ status, data }) => {
         if (status === 200 && data.success) {
           const cnt = (data.results || []).filter(r => r.status === 'saved').length;
-          const action = data.updated ? 'updated' : 'pushed';
-          showToast(`FlightBridge: ${cnt} leg${cnt !== 1 ? 's' : ''} ${action}` + (data.tripId ? ` (Trip #${data.tripId})` : ''));
+          const action = data.updated ? 'updated' : 'notified';
+          showToast(`FBO ${action}: ${cnt} leg${cnt !== 1 ? 's' : ''}` + (data.tripId ? ` (Trip #${data.tripId})` : ''));
+          // Update local state so status indicator goes green
+          currentFbTripId = data.tripId || currentFbTripId;
+          currentFbPushedSnapshot = data.pushedSnapshot || buildFbSnapshot(getTripState());
+          updateFbStatus();
           if (currentTripId) fetchFlightBridgeServices();
         } else {
-          showToast('FlightBridge error: ' + (data.error || `status=${status}`));
+          showToast('FBO notification error: ' + (data.error || `status=${status}`));
         }
       })
-      .catch(() => showToast('FlightBridge push failed'));
+      .catch(() => showToast('FBO notification failed'));
     });
   });
 }
+
+// Keep old name as alias for any external references
+function pushToFlightBridge() { notifyFBO(); }
 
 let fbServices = null;
 function fetchFlightBridgeServices() {
@@ -2187,6 +2156,8 @@ function startNewTrip() {
   // Reset state
   legs = [];
   currentTripId = null;
+  currentFbTripId = null;
+  currentFbPushedSnapshot = null;
   extraTZ = [];
   $('aircraft').value = $('homeAircraft').value || 'G550';
   $('pClimb').value = ''; $('pSpeed').value = ''; $('pDescent').value = ''; $('pStartup').value = ''; $('pShutdown').value = ''; $('pAlt').value = ''; $('showTime').value = '';
@@ -2222,9 +2193,10 @@ function loadHomeTrips() {
     for (const t of trips) {
       const div = document.createElement('div');
       div.className = 'home-trip';
+      const fbBadge = t.flightbridgeTripId ? '<span style="color:#22c55e;font-size:0.65rem;margin-left:0.4rem" title="FBO notified via FlightBridge">FBO</span>' : '';
       div.innerHTML = `
         <div style="min-width:0">
-          <div class="ht-name">${fmtTripDate(t.date) ? `<span style="color:#64748b;margin-right:0.4rem">${fmtTripDate(t.date)}</span>` : ''}${esc(t.name)}</div>
+          <div class="ht-name">${fmtTripDate(t.date) ? `<span style="color:#64748b;margin-right:0.4rem">${fmtTripDate(t.date)}</span>` : ''}${esc(t.name)}${fbBadge}</div>
           <div class="ht-route">${esc(t.route)}</div>
         </div>
         <span class="ht-delete" title="Delete">✕</span>`;
@@ -2255,6 +2227,8 @@ function loadTripAndShow(id) {
         const p = new URLSearchParams(data.state);
         history.replaceState(null, '', '?' + p.toString());
         currentTripId = id;
+        currentFbTripId = data.flightbridgeTripId || null;
+        currentFbPushedSnapshot = data.flightbridgePushedSnapshot || null;
         parseURL();
         showPlanner();
         recalc();
@@ -2262,6 +2236,8 @@ function loadTripAndShow(id) {
         fetchWinds();
         loadHistoryInline();
         acquireLock(id);
+        updateFbStatus();
+        if (currentFbTripId) fetchFlightBridgeServices();
       });
     })
     .catch(() => showToast('Load failed'));
