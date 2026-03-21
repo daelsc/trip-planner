@@ -1145,12 +1145,13 @@ function recalc() {
     const depTimeInput = tr.querySelector('[data-dep-f="time"]');
     if (curDepIndex === -1) {
       // First leg: sync to start time stores
-      depDateInput.addEventListener('change', function() {
+      depDateInput.addEventListener('blur', function() {
         $('startDateStore').value = this.value;
         const t = $('startTimeStore').value;
         $('startTime').value = (this.value && t) ? this.value + 'T' + t : '';
         recalc();
       });
+      depDateInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); depDateInput.blur(); } });
       setupTimeInput(depTimeInput, function(v) {
         $('startTimeStore').value = v;
         const d = $('startDateStore').value;
@@ -1160,10 +1161,11 @@ function recalc() {
     } else {
       // Subsequent legs: sync to previous leg's nextDep/nextDepDate
       const li = curDepIndex;
-      depDateInput.addEventListener('change', function() {
+      depDateInput.addEventListener('blur', function() {
         legs[li].nextDepDate = this.value;
         recalc();
       });
+      depDateInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); depDateInput.blur(); } });
       setupTimeInput(depTimeInput, v => { legs[li].nextDep = v; recalc(); });
     }
 
